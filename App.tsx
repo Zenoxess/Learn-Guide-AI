@@ -298,19 +298,23 @@ export default function App() {
     }
   }, [guide]);
   
-  const handleReset = () => {
+  const handleReturnToConfig = () => {
     setGuide([]);
     setSolvedQuestions([]);
     setPracticeQuestions([]);
     setExamQuestions([]);
     setExamResults([]);
     setError(null);
-    setScriptFile(null);
-    setPracticeFile(null);
     setOpenStepIndex(null);
     setAppState('initial');
     setProgress(0);
     localStorage.removeItem(LOCAL_STORAGE_KEY_GUIDE);
+  };
+  
+  const handleReset = () => {
+    handleReturnToConfig();
+    setScriptFile(null);
+    setPracticeFile(null);
   };
   
   const detailOptions = [ { id: 'overview', label: 'Übersicht', icon: ListBulletIcon }, { id: 'standard', label: 'Standard', icon: BookOpenIcon }, { id: 'detailed', label: 'Detailliert', icon: MagnifyingGlassIcon } ];
@@ -353,9 +357,9 @@ export default function App() {
                 </div>
             </>
         );
-      case 'guided': return <GuidedSolution scriptFile={scriptFile!} practiceFile={practiceFile!} questions={practiceQuestions} model={model} onExit={handleReset} />;
-      case 'simulation': return <SimulationMode scriptFile={scriptFile!} practiceFile={practiceFile!} questions={practiceQuestions} model={model} mode={simulationMode} onExit={handleReset} />;
-      case 'exam': return <ExamMode questions={examQuestions} onSubmit={handleGradeExam} onExit={handleReset} />;
+      case 'guided': return <GuidedSolution scriptFile={scriptFile!} practiceFile={practiceFile!} questions={practiceQuestions} model={model} onExit={handleReturnToConfig} />;
+      case 'simulation': return <SimulationMode scriptFile={scriptFile!} practiceFile={practiceFile!} questions={practiceQuestions} model={model} mode={simulationMode} onExit={handleReturnToConfig} />;
+      case 'exam': return <ExamMode questions={examQuestions} onSubmit={handleGradeExam} onExit={handleReturnToConfig} />;
       case 'examResults': return <ExamResults results={examResults} onRetry={handleReset} />;
       case 'error': return (
           <div className="text-center p-8 bg-red-100 dark:bg-red-900/50 border border-red-400 dark:border-red-600 rounded-lg max-w-2xl mx-auto">
