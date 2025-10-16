@@ -3,6 +3,7 @@ import type { Chat } from '@google/genai';
 import { startCoopChat, getAIOpponentAnswer, judgeAnswers } from '../services/geminiService';
 import type { ChatMessage, ModelName, SimulationModeType, JudgedRound } from '../types';
 import { ArrowUturnLeftIcon, SendIcon, BrainCircuitIcon, UsersIcon, SparklesIcon } from './icons';
+import { useTheme } from '../contexts/ThemeContext';
 
 const markdownToHtml = (markdown: string): string => {
   if (!markdown) return '';
@@ -24,6 +25,7 @@ interface SimulationModeProps {
 
 // FIX: Add practiceFile to the component's destructured props.
 export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFile, practiceFile, questions, model, mode, onExit }) => {
+  const { theme } = useTheme();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -140,7 +142,7 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFile, prac
             <div className="flex justify-between items-center">
                 <h2 className="text-lg font-semibold flex items-center"><SparklesIcon className="h-6 w-6 mr-2 text-yellow-500" />Herausforderer (VS)</h2>
                 <div className="text-lg font-bold">
-                    <span className="text-indigo-600 dark:text-indigo-400">DU: {userScore}</span>
+                    <span className={`${theme['text-primary-600_dark-400']}`}>DU: {userScore}</span>
                     <span className="mx-2 text-slate-400">|</span>
                     <span className="text-rose-600 dark:text-rose-400">KI: {aiScore}</span>
                 </div>
@@ -153,18 +155,18 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFile, prac
             {isRoundOver && currentRoundResult ? (
                 // Round Result View
                 <div className="space-y-6 animate-fade-in">
-                    <div><h4 className="font-bold mb-2">Deine Antwort ({currentRoundResult.userScore} Pkt.)</h4><div className="p-3 rounded-md bg-indigo-50 dark:bg-indigo-900/30"><MarkdownRenderer content={currentRoundResult.userAnswer} /></div></div>
+                    <div><h4 className="font-bold mb-2">Deine Antwort ({currentRoundResult.userScore} Pkt.)</h4><div className={`p-3 rounded-md ${theme['bg-primary-50_dark-900/30']}`}><MarkdownRenderer content={currentRoundResult.userAnswer} /></div></div>
                     <div><h4 className="font-bold mb-2">KI-Antwort ({currentRoundResult.aiScore} Pkt.)</h4><div className="p-3 rounded-md bg-rose-50 dark:bg-rose-900/30"><MarkdownRenderer content={currentRoundResult.aiAnswer} /></div></div>
                     <div><h4 className="font-bold mb-2">Urteil des Professors</h4><div className="p-3 rounded-md bg-slate-100 dark:bg-slate-700 italic"><MarkdownRenderer content={currentRoundResult.judgment} /></div></div>
-                    <button onClick={handleNextQuestion} className="w-full mt-4 px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">
+                    <button onClick={handleNextQuestion} className={`w-full mt-4 px-6 py-2 ${theme['bg-primary-600']} text-white font-semibold rounded-lg shadow-md ${theme['hover:bg-primary-700']}`}>
                         {currentQuestionIndex + 1 < questions.length ? 'Nächste Frage' : 'Simulation beenden'}
                     </button>
                 </div>
             ) : (
                 // Answering View
                 <form onSubmit={handleVsSubmit}>
-                    <textarea value={userAnswer} onChange={e => setUserAnswer(e.target.value)} placeholder="Deine Antwort hier..." className="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 h-48 bg-white dark:bg-slate-900" required />
-                    <button type="submit" disabled={isLoading} className="w-full mt-4 px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 disabled:bg-slate-400">
+                    <textarea value={userAnswer} onChange={e => setUserAnswer(e.target.value)} placeholder="Deine Antwort hier..." className={`w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 ${theme['focus:ring-primary-500']} h-48 bg-white dark:bg-slate-900`} required />
+                    <button type="submit" disabled={isLoading} className={`w-full mt-4 px-6 py-2 ${theme['bg-primary-600']} text-white font-semibold rounded-lg shadow-md ${theme['hover:bg-primary-700']} disabled:bg-slate-400`}>
                         {isLoading ? 'Bewerte...' : 'Antwort einloggen & bewerten lassen'}
                     </button>
                 </form>
@@ -186,7 +188,7 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFile, prac
                 <div key={index} className={`flex items-end gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     {msg.role === 'model' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-sm">P</div>}
                     {msg.role === 'system' && <div className="w-full text-center text-xs text-slate-500 dark:text-slate-400 py-2"><p className="max-w-md mx-auto">{msg.text}</p></div>}
-                    {msg.role !== 'system' && <div className={`p-3 rounded-2xl max-w-lg ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-none'}`}><MarkdownRenderer content={msg.text} /></div>}
+                    {msg.role !== 'system' && <div className={`p-3 rounded-2xl max-w-lg ${msg.role === 'user' ? `${theme['bg-primary-600']} text-white rounded-br-none` : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-none'}`}><MarkdownRenderer content={msg.text} /></div>}
                 </div>
             ))}
             {isCoopLoading && <div className="flex items-end gap-2 justify-start"><div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-sm">P</div><div className="p-3 rounded-2xl bg-slate-200 dark:bg-slate-700"><div className="flex items-center space-x-1"><span className="h-2 w-2 bg-slate-400 rounded-full animate-bounce"></span><span className="h-2 w-2 bg-slate-400 rounded-full animate-bounce delay-150"></span><span className="h-2 w-2 bg-slate-400 rounded-full animate-bounce delay-300"></span></div></div></div>}
@@ -196,7 +198,7 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFile, prac
         <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80">
             <form onSubmit={handleCoopSendMessage} className="relative">
                 <textarea value={userAnswer} onChange={e => setUserAnswer(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCoopSendMessage(e); }}} placeholder="Deine Idee oder Frage..." disabled={isCoopLoading} className="w-full p-3 pr-12 border rounded-lg bg-white dark:bg-slate-900" rows={2}/>
-                <button type="submit" disabled={isCoopLoading || !userAnswer.trim()} className="absolute top-1/2 right-3 -translate-y-1/2 p-2 rounded-full text-slate-500 hover:bg-indigo-100 disabled:opacity-50"><SendIcon className="w-5 h-5"/></button>
+                <button type="submit" disabled={isCoopLoading || !userAnswer.trim()} className={`absolute top-1/2 right-3 -translate-y-1/2 p-2 rounded-full text-slate-500 ${theme['hover:bg-primary-100_dark-800']} disabled:opacity-50`}><SendIcon className="w-5 h-5"/></button>
             </form>
             {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
         </div>

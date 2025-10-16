@@ -3,6 +3,7 @@ import type { Chat } from '@google/genai';
 import { startTutorChat } from '../services/geminiService';
 import type { ChatMessage, ModelName } from '../types';
 import { ArrowUturnLeftIcon, SendIcon, BrainCircuitIcon, DocumentArrowDownIcon } from './icons';
+import { useTheme } from '../contexts/ThemeContext';
 
 // TypeScript declarations for global libraries loaded via CDN
 declare const html2canvas: any;
@@ -32,6 +33,7 @@ interface GuidedSolutionProps {
 }
 
 export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, practiceFile, questions, model, onExit }) => {
+  const { theme } = useTheme();
   const chatRef = useRef<Chat | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,19 +106,31 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
   };
 
   const handleExportPdf = async () => {
-      if (!chatContentRef.current || typeof html2canvas === 'undefined' || typeof jspdf === 'undefined') {
+      const chatContainer = chatContentRef.current;
+      if (!chatContainer || typeof html2canvas === 'undefined' || typeof jspdf === 'undefined') {
           setError("Die PDF-Export-Funktion konnte nicht geladen werden.");
           return;
       }
       setIsExportingPdf(true);
       setError(null);
 
+      // Store original styles to restore them later
+      const originalHeight = chatContainer.style.height;
+      const originalOverflow = chatContainer.style.overflowY;
+
+      // Temporarily modify styles to capture the full content
+      chatContainer.style.height = `${chatContainer.scrollHeight}px`;
+      chatContainer.style.overflowY = 'visible';
+
       try {
           const { jsPDF } = jspdf;
-          const canvas = await html2canvas(chatContentRef.current, {
+          const canvas = await html2canvas(chatContainer, {
               scale: 2,
               useCORS: true,
-              backgroundColor: window.getComputedStyle(chatContentRef.current).backgroundColor
+              // Ensure the canvas is created with the full height of the content
+              windowHeight: chatContainer.scrollHeight,
+              windowWidth: chatContainer.scrollWidth,
+              scrollY: -window.scrollY // Capture from the top of the element
           });
           const imgData = canvas.toDataURL('image/png');
           const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -142,6 +156,9 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
           console.error("PDF export failed", err);
           setError("Der PDF-Export ist fehlgeschlagen.");
       } finally {
+          // Restore original styles
+          chatContainer.style.height = originalHeight;
+          chatContainer.style.overflowY = originalOverflow;
           setIsExportingPdf(false);
       }
   };
@@ -150,7 +167,7 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
 
   if (isInitializing) {
     return <div className="text-center p-8">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
+        <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${theme['border-primary-500']} mx-auto`}></div>
         <p className="mt-4 text-lg font-semibold text-slate-700 dark:text-slate-300">Tutor wird vorbereitet...</p>
     </div>;
   }
@@ -178,7 +195,7 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
               <button
                 onClick={() => handleSelectQuestion(index)}
                 disabled={isTutorLoading}
-                className={`w-full text-left p-4 text-sm hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors disabled:opacity-50 ${selectedQuestionIndex === index ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-200' : ''}`}
+                className={`w-full text-left p-4 text-sm hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors disabled:opacity-50 ${selectedQuestionIndex === index ? `${theme['bg-primary-100_dark-900/50']} ${theme['text-primary-800_dark-200']}` : ''}`}
               >
                 <span className="font-semibold block">Frage {index + 1}</span>
                 <span className="text-slate-600 dark:text-slate-400">{q.substring(0, 80)}{q.length > 80 ? '...' : ''}</span>
@@ -190,7 +207,7 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
             <label htmlFor="progress-bar" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Fortschritt</label>
             <div id="progress-bar" className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5">
                 <div 
-                    className="bg-indigo-600 h-2.5 rounded-full transition-all duration-500"
+                    className={`${theme['bg-primary-600']} h-2.5 rounded-full transition-all duration-500`}
                     style={{ width: `${progress}%` }}
                     role="progressbar"
                     aria-valuenow={progress}
@@ -235,15 +252,15 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
                 <div ref={chatContentRef} className="flex-grow p-4 space-y-4 overflow-y-auto bg-slate-50 dark:bg-slate-800">
                     {messages.map((msg, index) => (
                         <div key={index} className={`flex items-end gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            {msg.role === 'model' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold text-sm">AI</div>}
-                            <div className={`p-3 rounded-2xl max-w-lg ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-none'}`}>
+                            {msg.role === 'model' && <div className={`flex-shrink-0 w-8 h-8 rounded-full ${theme['bg-primary-500']} flex items-center justify-center text-white font-bold text-sm`}>AI</div>}
+                            <div className={`p-3 rounded-2xl max-w-lg ${msg.role === 'user' ? `${theme['bg-primary-600']} text-white rounded-br-none` : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-none'}`}>
                                 <MarkdownRenderer content={msg.text} />
                             </div>
                         </div>
                     ))}
                      {isTutorLoading && (
                         <div className="flex items-end gap-2 justify-start">
-                             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold text-sm">AI</div>
+                             <div className={`flex-shrink-0 w-8 h-8 rounded-full ${theme['bg-primary-500']} flex items-center justify-center text-white font-bold text-sm`}>AI</div>
                             <div className="p-3 rounded-2xl bg-slate-200 dark:bg-slate-700">
                                 <div className="flex items-center space-x-1">
                                     <span className="h-2 w-2 bg-slate-400 rounded-full animate-bounce delay-0"></span>
@@ -263,10 +280,10 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
                             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(e); }}}
                             placeholder="Stelle eine Frage oder gib deine Antwort ein..."
                             disabled={isTutorLoading}
-                            className="w-full p-3 pr-12 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors bg-white dark:bg-slate-900"
+                            className={`w-full p-3 pr-12 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 ${theme['focus:ring-primary-500']} ${theme['border-primary-500']} transition-colors bg-white dark:bg-slate-900`}
                             rows={2}
                         />
-                        <button type="submit" disabled={isTutorLoading || !userInput.trim()} className="absolute top-1/2 right-3 -translate-y-1/2 p-2 rounded-full text-slate-500 hover:bg-indigo-100 dark:hover:bg-indigo-800 hover:text-indigo-600 dark:hover:text-indigo-300 disabled:cursor-not-allowed disabled:opacity-50">
+                        <button type="submit" disabled={isTutorLoading || !userInput.trim()} className={`absolute top-1/2 right-3 -translate-y-1/2 p-2 rounded-full text-slate-500 ${theme['hover:bg-primary-100_dark-800']} ${theme['hover:text-primary-600_dark-300']} disabled:cursor-not-allowed disabled:opacity-50`}>
                             <SendIcon className="w-5 h-5"/>
                         </button>
                     </form>

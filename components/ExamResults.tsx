@@ -1,6 +1,7 @@
 import React from 'react';
 import type { GradedAnswer } from '../types';
 import { AcademicCapIcon, CheckIcon } from './icons';
+import { useTheme } from '../contexts/ThemeContext';
 
 // Helper to convert simple markdown to HTML for safe rendering
 const markdownToHtml = (markdown: string): string => {
@@ -24,6 +25,7 @@ interface ExamResultsProps {
 }
 
 export const ExamResults: React.FC<ExamResultsProps> = ({ results, onRetry }) => {
+  const { theme } = useTheme();
   const correctAnswers = results.filter(r => r.isCorrect).length;
   const totalQuestions = results.length;
   const scorePercentage = totalQuestions > 0 ? (correctAnswers / totalQuestions) * 100 : 0;
@@ -39,7 +41,7 @@ export const ExamResults: React.FC<ExamResultsProps> = ({ results, onRetry }) =>
     <div className="w-full max-w-4xl mx-auto">
         <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-100 flex items-center justify-center">
-                <AcademicCapIcon className="h-8 w-8 mr-3 text-indigo-500" />
+                <AcademicCapIcon className={`h-8 w-8 mr-3 ${theme['text-primary-500']}`} />
                 Prüfungsergebnisse
             </h2>
         </div>
@@ -74,7 +76,7 @@ export const ExamResults: React.FC<ExamResultsProps> = ({ results, onRetry }) =>
                         </div>
                         <div>
                             <h5 className="font-semibold text-slate-600 dark:text-slate-400 mb-1">Feedback:</h5>
-                            <div className="p-3 rounded-md bg-indigo-50 dark:bg-indigo-900/30">
+                            <div className={`p-3 rounded-md ${theme['bg-primary-50_dark-900/30']}`}>
                                 <MarkdownRenderer content={result.feedback} />
                             </div>
                         </div>
@@ -86,7 +88,7 @@ export const ExamResults: React.FC<ExamResultsProps> = ({ results, onRetry }) =>
         <div className="mt-8 text-center">
              <button
                 onClick={onRetry}
-                className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-75"
+                className={`px-8 py-3 ${theme['bg-primary-600']} text-white font-semibold rounded-lg shadow-md ${theme['hover:bg-primary-700']} focus:outline-none focus:ring-2 ${theme['focus:ring-primary-400']} focus:ring-opacity-75`}
             >
                 Neue Sitzung starten
             </button>

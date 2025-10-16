@@ -1,5 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { UploadIcon, CheckIcon } from './icons';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface FileUploadProps {
   onFileSelect: (file: File) => void;
@@ -16,6 +17,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   label = 'Dokument hierher ziehen',
   description = 'oder klicken, um eine Datei auszuwählen'
 }) => {
+  const { theme } = useTheme();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -75,15 +77,15 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   
   const dropzoneClasses = `
     relative block w-full border-2 border-dashed rounded-lg p-12 text-center 
-    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 
+    focus:outline-none focus:ring-2 focus:ring-offset-2 ${theme['focus:ring-primary-500']} 
     transition-all duration-300 
     ${isLoading 
         ? 'cursor-not-allowed bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600' 
         : isSuccess
             ? 'cursor-default bg-green-50 dark:bg-green-900/50 border-green-500'
         : isDragOver 
-            ? 'cursor-copy bg-indigo-50 dark:bg-indigo-900/50 border-indigo-500' 
-            : 'cursor-pointer bg-white dark:bg-slate-800/50 border-slate-300 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500'
+            ? `cursor-copy ${theme['bg-primary-50_dark-900/50']} ${theme['border-primary-500']}` 
+            : `cursor-pointer bg-white dark:bg-slate-800/50 border-slate-300 dark:border-slate-600 ${theme['hover:border-primary-400_dark-500']}`
     }
   `;
 
@@ -116,7 +118,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center">
-            <UploadIcon className={`mx-auto h-12 w-12 transition-colors duration-200 ${isDragOver ? 'text-indigo-500' : 'text-slate-400'}`} />
+            <UploadIcon className={`mx-auto h-12 w-12 transition-colors duration-200 ${isDragOver ? theme['text-primary-500'] : 'text-slate-400'}`} />
             <span className="mt-2 block text-sm font-medium text-slate-900 dark:text-slate-200">
               {isDragOver ? 'Datei hier ablegen' : label}
             </span>
