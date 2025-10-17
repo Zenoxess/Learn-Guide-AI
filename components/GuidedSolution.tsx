@@ -2,15 +2,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Chat } from '@google/genai';
 import { startTutorChat } from '../services/geminiService';
 import type { ChatMessage, ModelName } from '../types';
-import { ArrowUturnLeftIcon, SendIcon, BrainCircuitIcon, DocumentArrowDownIcon } from './icons';
+import { ArrowUturnLeftIcon, SendIcon, DocumentArrowDownIcon, ChatBubbleLeftRightIcon } from './icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { Button } from './Button';
 
 // TypeScript declarations for global libraries loaded via CDN
 declare const jspdf: any;
 
 interface GuidedSolutionProps {
-// FIX: Changed from scriptFile: File to scriptFiles: File[] to accept multiple script files.
   scriptFiles: File[];
   practiceFile: File;
   questions: string[];
@@ -41,7 +41,6 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFiles, pra
   useEffect(() => {
     const initializeChat = async () => {
       try {
-// FIX: Pass scriptFiles array to startTutorChat instead of a single file.
         const chat = await startTutorChat(scriptFiles, practiceFile, model);
         chatRef.current = chat;
       } catch (err: any) {
@@ -259,9 +258,10 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFiles, pra
       <main className="w-full md:w-2/3 flex flex-col h-full">
         {selectedQuestionIndex === null ? (
             <div className="flex-grow flex items-center justify-center text-center p-8">
-                <div>
-                    <BrainCircuitIcon className="h-16 w-16 text-slate-400 dark:text-slate-500 mx-auto" />
-                    <p className="mt-4 text-slate-600 dark:text-slate-400">Wähle links eine Frage aus, um mit deinem persönlichen Tutor zu beginnen.</p>
+                <div className="flex flex-col items-center">
+                    <ChatBubbleLeftRightIcon className="h-20 w-20 text-slate-300 dark:text-slate-600 mx-auto" />
+                    <h3 className="mt-4 text-xl font-semibold text-slate-800 dark:text-slate-200">Wähle eine Frage zum Starten</h3>
+                    <p className="mt-2 max-w-xs text-slate-500 dark:text-slate-400">Wähle links eine Aufgabe aus, um die geführte Lernsitzung mit deinem KI-Tutor zu beginnen.</p>
                 </div>
             </div>
         ) : (
@@ -270,19 +270,18 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFiles, pra
                     <h3 className="font-semibold text-slate-800 dark:text-slate-200 pr-4">
                         {questions[selectedQuestionIndex]}
                     </h3>
-                    <button 
+                    <Button 
                         onClick={handleExportPdf} 
                         disabled={isExportingPdf || messages.length === 0}
-                        className="inline-flex items-center px-3 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium rounded-md hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-                        aria-label="Chat als PDF exportieren"
+                        variant="secondary"
+                        size="sm"
+                        leftIcon={isExportingPdf 
+                            ? <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="http://www.w3.org/2000/svg"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            : <DocumentArrowDownIcon className="h-4 w-4" />
+                        }
                     >
-                        {isExportingPdf ? (
-                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="http://www.w3.org/2000/svg"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                        ) : (
-                            <DocumentArrowDownIcon className="h-4 w-4 mr-1.5" />
-                        )}
                         Exportieren
-                    </button>
+                    </Button>
                 </div>
                 <div ref={chatContentRef} className="flex-grow p-4 space-y-4 overflow-y-auto bg-slate-50 dark:bg-slate-800">
                     {messages.map((msg, index) => (

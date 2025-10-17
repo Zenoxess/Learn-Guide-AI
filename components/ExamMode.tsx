@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { ExamQuestion, ExamAnswer } from '../types';
 import { ArrowUturnLeftIcon, AcademicCapIcon } from './icons';
 import { useTheme } from '../contexts/ThemeContext';
+import { Button } from './Button';
 
 interface ExamModeProps {
   questions: ExamQuestion[];
@@ -66,13 +67,15 @@ export const ExamMode: React.FC<ExamModeProps> = ({ questions, onSubmit, onExit 
             ))}
             
             <div className="text-center pt-4">
-                 <button 
+                 <Button 
                     type="submit"
                     disabled={!allAnswered}
-                    className={`w-full sm:w-auto px-12 py-3 ${theme['bg-primary-600']} text-white font-bold text-lg rounded-lg shadow-lg ${theme['hover:bg-primary-700']} focus:outline-none focus:ring-2 ${theme['focus:ring-primary-400']} focus:ring-opacity-75 transition-all transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-not-allowed disabled:transform-none`}
+                    variant="primary"
+                    size="lg"
+                    className="w-full sm:w-auto transform hover:scale-105"
                  >
                     Prüfung abgeben und bewerten lassen
-                </button>
+                </Button>
                 {!allAnswered && (
                     <p className="text-xs text-slate-500 mt-2">Bitte beantworte alle Fragen, bevor du die Prüfung abgibst.</p>
                 )}

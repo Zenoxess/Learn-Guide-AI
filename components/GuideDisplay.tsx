@@ -1,15 +1,36 @@
 import React, { useState } from 'react';
 import type { GuideStep, SolvedQuestion } from '../types';
-import { ChevronDownIcon, SendIcon, SparklesIcon } from './icons';
+import { ChevronDownIcon, SendIcon, SparklesIcon, BookOpenIcon, LightBulbIcon, ExclamationTriangleIcon, ListBulletIcon } from './icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { InlineSpinner } from './InlineSpinner';
+
+const getIconForTitle = (title: string): React.FC<{className?: string}> => {
+    const lowerCaseTitle = title.toLowerCase();
+    if (['grundlagen', 'basis', 'einführung', 'übersicht'].some(keyword => lowerCaseTitle.includes(keyword))) {
+        return BookOpenIcon;
+    }
+    if (['tipp', 'hinweis', 'trick', 'denkanstoß'].some(keyword => lowerCaseTitle.includes(keyword))) {
+        return LightBulbIcon;
+    }
+    if (['fehler', 'problem', 'fallstrick', 'warnung'].some(keyword => lowerCaseTitle.includes(keyword))) {
+        return ExclamationTriangleIcon;
+    }
+    if (['beispiel', 'aufgabe', 'übung'].some(keyword => lowerCaseTitle.includes(keyword))) {
+        return ListBulletIcon;
+    }
+    return SparklesIcon; // Default icon
+};
+
 
 const GuideAccordionItem: React.FC<{ step: GuideStep; isOpen: boolean; onClick: () => void; onAskFollowUp: (question: string) => Promise<void>; }> = ({ step, isOpen, onClick, onAskFollowUp }) => {
   const { theme } = useTheme();
   const [question, setQuestion] = useState('');
   const [isAsking, setIsAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeButtonIndex, setActiveButtonIndex] = useState<number | null>(null);
+  
+  const TitleIcon = getIconForTitle(step.title);
 
   const executeAsk = async (questionToAsk: string) => {
     if (!questionToAsk.trim() || isAsking) return;
@@ -31,8 +52,10 @@ const GuideAccordionItem: React.FC<{ step: GuideStep; isOpen: boolean; onClick: 
     await executeAsk(question);
   };
 
-  const handleSuggestedQuestionClick = async (suggestedQuestion: string) => {
+  const handleSuggestedQuestionClick = async (suggestedQuestion: string, index: number) => {
     setQuestion(suggestedQuestion);
+    setActiveButtonIndex(index);
+    setTimeout(() => setActiveButtonIndex(null), 500);
     await executeAsk(suggestedQuestion);
   };
 
@@ -47,7 +70,10 @@ const GuideAccordionItem: React.FC<{ step: GuideStep; isOpen: boolean; onClick: 
           aria-expanded={isOpen}
           aria-controls={`accordion-body-${step.title.replace(/\s+/g, '-')}`}
         >
-          <span className="text-lg">{step.title}</span>
+          <span className="flex items-center text-lg">
+            <TitleIcon className={`h-6 w-6 mr-3 ${theme['text-primary-500']}`} />
+            {step.title}
+          </span>
           <ChevronDownIcon className={`w-6 h-6 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
         </button>
       </h2>
@@ -65,9 +91,9 @@ const GuideAccordionItem: React.FC<{ step: GuideStep; isOpen: boolean; onClick: 
                 {step.suggestedFollowUps.map((q, index) => (
                   <button
                     key={index}
-                    onClick={() => handleSuggestedQuestionClick(q)}
+                    onClick={() => handleSuggestedQuestionClick(q, index)}
                     disabled={isAsking}
-                    className={`px-3 py-1.5 text-sm rounded-full transition-colors flex items-center ${theme['bg-primary-100_dark-900/50']} ${theme['text-primary-800_dark-200']} hover:bg-slate-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 ${theme['focus:ring-primary-500']} disabled:opacity-70 disabled:cursor-not-allowed`}
+                    className={`px-3 py-1.5 text-sm rounded-full transition-all duration-300 flex items-center ${activeButtonIndex === index ? 'bg-green-200 dark:bg-green-800 scale-105' : `${theme['bg-primary-100_dark-900/50']} ${theme['text-primary-800_dark-200']} hover:bg-slate-200 dark:hover:bg-slate-700`} focus:outline-none focus:ring-2 focus:ring-offset-2 ${theme['focus:ring-primary-500']} disabled:opacity-70 disabled:cursor-not-allowed`}
                   >
                     {q}
                   </button>

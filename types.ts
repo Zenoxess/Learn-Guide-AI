@@ -35,6 +35,8 @@ export interface ChatMessage {
   text: string;
 }
 
+export type ScriptAction = 'guide' | 'concepts' | 'flashcards' | 'exam';
+
 // Prüfungsmodus
 export interface ExamQuestion {
   id: string;
@@ -90,3 +92,14 @@ export interface Flashcard {
 export interface FlashcardsResponse {
   flashcards: Flashcard[];
 }
+
+export interface GeneratedContent {
+  guide?: GuideStep[] | null;
+  solvedQuestions?: SolvedQuestion[] | null;
+  keyConcepts?: KeyConcept[] | null;
+  flashcards?: Flashcard[] | null;
+  examResults?: GradedAnswer[] | null;
+}
+
+// Benachrichtigungen
+export type NotificationType = 'success' | 'warning';

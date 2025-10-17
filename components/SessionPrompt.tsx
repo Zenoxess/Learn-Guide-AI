@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { ArrowPathIcon, SparklesIcon } from './icons';
+import { Button } from './Button';
 
 interface SessionPromptProps {
   onContinue: () => void;
@@ -31,20 +32,20 @@ export const SessionPrompt: React.FC<SessionPromptProps> = ({ onContinue, onNew 
           </div>
         </div>
         <div className="bg-slate-50 dark:bg-slate-800/50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
-          <button
-            type="button"
+          <Button
             onClick={onContinue}
-            className={`inline-flex w-full justify-center rounded-md ${theme['bg-primary-600']} px-3 py-2 text-sm font-semibold text-white shadow-sm ${theme['hover:bg-primary-700']} sm:ml-3 sm:w-auto`}
+            variant="primary"
+            className="w-full sm:ml-3 sm:w-auto"
           >
             Fortsetzen
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
             onClick={onNew}
-            className="mt-3 inline-flex w-full justify-center rounded-md bg-white dark:bg-slate-700 px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 sm:mt-0 sm:w-auto"
+            variant="secondary"
+            className="mt-3 w-full sm:mt-0 sm:w-auto"
           >
             Neu starten
-          </button>
+          </Button>
         </div>
       </div>
     </div>

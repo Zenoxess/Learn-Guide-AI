@@ -1,29 +1,26 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import type { GuideStep, DetailLevel, SolvedQuestion, ModelName, SolutionMode, ExamQuestion, ExamAnswer, GradedAnswer, SimulationModeType, KeyConcept, Flashcard } from './types';
+import type { GuideStep, DetailLevel, ModelName, SolutionMode, ExamQuestion, ExamAnswer, GradedAnswer, SimulationModeType, ScriptAction, GeneratedContent, NotificationType } from './types';
 import { generateStudyGuide, askFollowUpQuestion, solvePracticeQuestions, extractQuestions, generateExamQuestions, gradeExamAnswers, generateKeyConcepts, generateFlashcards, generateContentFromUrl } from './services/geminiService';
-import { FileUpload } from './components/FileUpload';
-import { GuideDisplay } from './components/GuideDisplay';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { GuidedSolution } from './components/GuidedSolution';
 import { ExamMode } from './components/ExamMode';
-import { ExamResults } from './components/ExamResults';
-import { SimulationMode } from './components/SimulationMode';
-import { KeyConceptsDisplay } from './components/KeyConceptsDisplay';
-import { FlashcardMode } from './components/FlashcardMode';
 import { PdfPreview } from './components/PdfPreview';
 import { SessionPrompt } from './components/SessionPrompt';
 import { Notification } from './components/Notification';
-import { SparklesIcon, ListBulletIcon, BookOpenIcon, MagnifyingGlassIcon, DocumentArrowDownIcon, CpuChipIcon, ChatBubbleLeftRightIcon, AcademicCapIcon, UsersIcon, KeyIcon, RectangleStackIcon, XMarkIcon, LinkIcon, ArrowPathIcon, LightBulbIcon } from './components/icons';
+import { SetupWizard } from './components/SetupWizard';
+import { ResultsDashboard } from './components/ResultsDashboard';
+import { Button } from './components/Button';
+import { SparklesIcon, DocumentArrowDownIcon, ArrowPathIcon } from './components/icons';
 import { useTheme } from './contexts/ThemeContext';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import { fileToBase64, base64ToFile } from './utils';
+import { SimulationMode } from './components/SimulationMode';
 
 // TypeScript declarations for global libraries loaded via CDN
 declare const jspdf: any;
 declare const html2canvas: any;
 
-type AppState = 'initial' | 'loading' | 'success' | 'error' | 'guided' | 'exam' | 'examResults' | 'simulation' | 'keyConcepts' | 'flashcards';
-type ScriptAction = 'guide' | 'concepts' | 'flashcards' | 'exam';
+type AppState = 'initial' | 'loading' | 'resultsDashboard' | 'error' | 'guided' | 'exam' | 'simulation';
 
 const SESSION_STORAGE_KEY = 'lernGuideSession';
 
@@ -34,15 +31,16 @@ interface SerializableFile {
     data: string; // base64
 }
 
+interface AppNotification {
+  message: string;
+  type: NotificationType;
+}
+
 interface SavedSession {
     appState: AppState;
     scriptFiles: SerializableFile[];
     practiceFile: SerializableFile | null;
-    guide: GuideStep[];
-    solvedQuestions: SolvedQuestion[];
-    examResults: GradedAnswer[];
-    keyConcepts: KeyConcept[];
-    flashcards: Flashcard[];
+    generatedContent: GeneratedContent;
     openStepIndex: number | null;
     useStrictContext: boolean;
     detailLevel: DetailLevel;
@@ -52,13 +50,9 @@ interface SavedSession {
 
 export default function App() {
   const { theme } = useTheme();
-  const [guide, setGuide] = useState<GuideStep[]>([]);
-  const [solvedQuestions, setSolvedQuestions] = useState<SolvedQuestion[]>([]);
+  const [generatedContent, setGeneratedContent] = useState<GeneratedContent>({});
   const [practiceQuestions, setPracticeQuestions] = useState<string[]>([]);
   const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
-  const [examResults, setExamResults] = useState<GradedAnswer[]>([]);
-  const [keyConcepts, setKeyConcepts] = useState<KeyConcept[]>([]);
-  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [appState, setAppState] = useState<AppState>('initial');
   const [scriptFiles, setScriptFiles] = useState<File[]>([]);
@@ -78,7 +72,7 @@ export default function App() {
   const [isUrlLoading, setIsUrlLoading] = useState(false);
   const [savedSessionData, setSavedSessionData] = useState<SavedSession | null>(null);
   const [showSessionPrompt, setShowSessionPrompt] = useState(false);
-  const [saveNotification, setSaveNotification] = useState<string | null>(null);
+  const [notification, setNotification] = useState<AppNotification | null>(null);
 
   // Load session from localStorage on initial app load
   useEffect(() => {
@@ -125,16 +119,15 @@ export default function App() {
 
             const sessionToSave: SavedSession = {
                 appState, scriptFiles: serializableScriptFiles, practiceFile: serializablePracticeFile,
-                guide, solvedQuestions, examResults, keyConcepts, flashcards, openStepIndex,
-                useStrictContext, detailLevel, model, selectedScriptAction,
+                generatedContent, openStepIndex, useStrictContext, detailLevel, model, selectedScriptAction,
             };
 
             localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionToSave));
-            if (saveNotification) setSaveNotification(null); // Clear previous error if save is now successful
+            if (notification?.type === 'warning') setNotification(null); // Clear previous error if save is now successful
 
         } catch (err) {
             if (err instanceof DOMException && (err.name === 'QuotaExceededError' || err.code === 22)) {
-                setSaveNotification("Warnung: Ihre Sitzung ist zu groß, um sie zu speichern. Ihr Fortschritt wird bei einem Neuladen nicht wiederhergestellt.");
+                setNotification({ message: "Warnung: Ihre Sitzung ist zu groß, um sie zu speichern. Ihr Fortschritt wird bei einem Neuladen nicht wiederhergestellt.", type: 'warning' });
             } else {
                 console.error("Failed to save session to localStorage", err);
             }
@@ -142,9 +135,8 @@ export default function App() {
     };
     saveSession();
   }, [
-    appState, scriptFiles, practiceFile, guide, solvedQuestions, examResults, 
-    keyConcepts, flashcards, openStepIndex, useStrictContext, detailLevel, model, 
-    selectedScriptAction, showSessionPrompt
+    appState, scriptFiles, practiceFile, generatedContent, openStepIndex, useStrictContext, 
+    detailLevel, model, selectedScriptAction, showSessionPrompt
   ]);
 
   const handleRestoreSession = () => {
@@ -156,11 +148,7 @@ export default function App() {
       
       setScriptFiles(restoredScriptFiles);
       setPracticeFile(restoredPracticeFile);
-      setGuide(savedSessionData.guide);
-      setSolvedQuestions(savedSessionData.solvedQuestions);
-      setExamResults(savedSessionData.examResults);
-      setKeyConcepts(savedSessionData.keyConcepts);
-      setFlashcards(savedSessionData.flashcards);
+      setGeneratedContent(savedSessionData.generatedContent);
       setOpenStepIndex(savedSessionData.openStepIndex);
       setUseStrictContext(savedSessionData.useStrictContext);
       setDetailLevel(savedSessionData.detailLevel);
@@ -208,12 +196,13 @@ export default function App() {
           format: 'a4'
         });
 
-        const mainTitle = guide.length > 0 ? 'Dein persönlicher Lern-Guide' : 'Gelöste Übungsaufgaben';
+        const mainTitle = generatedContent.guide ? 'Dein persönlicher Lern-Guide' : 'Gelöste Übungsaufgaben';
         const filename = `${mainTitle.toLowerCase().replace(/\s/g, '-')}.pdf`;
         
         await doc.html(elementToPrint, {
           callback: (doc) => {
             doc.save(filename);
+            setNotification({ message: "PDF erfolgreich heruntergeladen.", type: 'success' });
           },
           x: 0,
           y: 0,
@@ -235,7 +224,7 @@ export default function App() {
     const timer = setTimeout(exportPdf, 100);
 
     return () => clearTimeout(timer);
-  }, [isExportingPdf, guide, solvedQuestions]);
+  }, [isExportingPdf, generatedContent]);
 
   const startLoadingProcess = (message?: string) => {
     setAppState('loading');
@@ -312,9 +301,8 @@ export default function App() {
       const result = await generateStudyGuide(scriptFiles, useStrictContext, detailLevel, model);
       finishLoadingProcess(interval, () => {
         if (result.guide && result.guide.length > 0) {
-          setGuide(result.guide);
-          setSolvedQuestions([]);
-          setAppState('success');
+          setGeneratedContent(prev => ({...prev, guide: result.guide, solvedQuestions: null }));
+          setAppState('resultsDashboard');
           setOpenStepIndex(0);
         } else {
           throw new Error("Die KI konnte keinen Guide für dieses Dokument erstellen.");
@@ -332,8 +320,8 @@ export default function App() {
         const result = await generateKeyConcepts(scriptFiles, model);
         finishLoadingProcess(interval, () => {
             if (result.keyConcepts && result.keyConcepts.length > 0) {
-                setKeyConcepts(result.keyConcepts);
-                setAppState('keyConcepts');
+                setGeneratedContent(prev => ({...prev, keyConcepts: result.keyConcepts }));
+                setAppState('resultsDashboard');
             } else {
                 throw new Error("Die KI konnte keine Schlüsselkonzepte für dieses Dokument finden.");
             }
@@ -350,8 +338,8 @@ export default function App() {
         const result = await generateFlashcards(scriptFiles, model);
         finishLoadingProcess(interval, () => {
             if (result.flashcards && result.flashcards.length > 0) {
-                setFlashcards(result.flashcards);
-                setAppState('flashcards');
+                setGeneratedContent(prev => ({...prev, flashcards: result.flashcards }));
+                setAppState('resultsDashboard');
             } else {
                 throw new Error("Die KI konnte keine Lernkarten für dieses Dokument erstellen.");
             }
@@ -387,8 +375,8 @@ export default function App() {
           const result = await gradeExamAnswers(scriptFiles, answersWithText, model);
           finishLoadingProcess(interval, () => {
               if (result.gradedAnswers && result.gradedAnswers.length > 0) {
-                  setExamResults(result.gradedAnswers);
-                  setAppState('examResults');
+                  setGeneratedContent(prev => ({...prev, examResults: result.gradedAnswers }));
+                  setAppState('resultsDashboard');
               } else {
                   throw new Error("Die Prüfung konnte nicht ausgewertet werden.");
               }
@@ -405,9 +393,8 @@ export default function App() {
         const result = await solvePracticeQuestions(scriptFiles, practiceFile, model);
         finishLoadingProcess(interval, () => {
             if (result.solvedQuestions && result.solvedQuestions.length > 0) {
-                setSolvedQuestions(result.solvedQuestions);
-                setGuide([]);
-                setAppState('success');
+                setGeneratedContent(prev => ({...prev, solvedQuestions: result.solvedQuestions, guide: null }));
+                setAppState('resultsDashboard');
                 setOpenStepIndex(0);
             } else {
                 throw new Error("Die KI konnte die Übungsaufgaben nicht lösen.");
@@ -440,30 +427,28 @@ export default function App() {
   }, [practiceFile, model, activeMode, scriptFiles]);
 
   const handleAskFollowUp = useCallback(async (stepIndex: number, question: string) => {
+    if (!generatedContent.guide) return;
     try {
-        const answer = await askFollowUpQuestion(guide[stepIndex].content, question);
-        setGuide(currentGuide => {
-            const newGuide = [...currentGuide];
+        const answer = await askFollowUpQuestion(generatedContent.guide[stepIndex].content, question);
+        setGeneratedContent(current => {
+            if (!current.guide) return current;
+            const newGuide = [...current.guide];
             const stepToUpdate = { ...newGuide[stepIndex] };
             if (!stepToUpdate.followUps) stepToUpdate.followUps = [];
             stepToUpdate.followUps.push({ question, answer });
             newGuide[stepIndex] = stepToUpdate;
-            return newGuide;
+            return { ...current, guide: newGuide };
         });
     } catch (err: any) {
         console.error("Failed to get answer for follow-up question:", err);
         throw err;
     }
-  }, [guide]);
+  }, [generatedContent.guide]);
   
   const handleReturnToConfig = () => {
-    setGuide([]);
-    setSolvedQuestions([]);
+    setGeneratedContent({});
     setPracticeQuestions([]);
     setExamQuestions([]);
-    setExamResults([]);
-    setKeyConcepts([]);
-    setFlashcards([]);
     setError(null);
     setOpenStepIndex(null);
     setAppState('initial');
@@ -476,20 +461,6 @@ export default function App() {
     setPracticeFile(null);
     localStorage.removeItem(SESSION_STORAGE_KEY);
   };
-  
-  const detailOptions = [ { id: 'overview', label: 'Übersicht', icon: ListBulletIcon }, { id: 'standard', label: 'Standard', icon: BookOpenIcon }, { id: 'detailed', label: 'Detailliert', icon: MagnifyingGlassIcon }, { id: 'eli5', label: 'ELI5', icon: LightBulbIcon } ];
-  const solutionModeOptions = [ { id: 'direct', label: 'Direkte Lösung', icon: BookOpenIcon }, { id: 'guided', label: 'Geführte Lösung', icon: ChatBubbleLeftRightIcon } ];
-  const simulationModeOptions = [ { id: 'coop', label: 'Studienpartner', icon: UsersIcon }, { id: 'vs', label: 'Herausforderer', icon: SparklesIcon } ];
-  const detailDescriptions: Record<DetailLevel, string> = { overview: 'Ideal für eine schnelle Zusammenfassung.', standard: 'Eine ausgewogene, schrittweise Erklärung.', detailed: 'Eine tiefgehende Analyse mit Beispielen.', eli5: 'Erklärung wie für ein 5-jähriges Kind, mit einfachen Analogien.' };
-  const modelOptions = [ { id: 'gemini-2.5-flash', label: 'Flash' }, { id: 'gemini-2.5-pro', label: 'Pro' } ];
-  const modelDescriptions: Record<ModelName, string> = { 'gemini-2.5-flash': 'Schnell und effizient, für die meisten Aufgaben geeignet.', 'gemini-2.5-pro': 'Leistungsstark, ideal für komplexe Dokumente.' };
-  
-  const scriptActionOptions = [
-    { id: 'guide', label: 'Lern-Guide', icon: BookOpenIcon, description: 'Erstellt eine detaillierte, schrittweise Anleitung durch Ihre Dokumente, um komplexe Themen verständlich aufzubereiten.' },
-    { id: 'concepts', label: 'Konzepte', icon: KeyIcon, description: 'Extrahiert die wichtigsten Schlüsselbegriffe und Definitionen aus den Skripten und stellt sie als übersichtliches Glossar dar.' },
-    { id: 'flashcards', label: 'Lernkarten', icon: RectangleStackIcon, description: 'Generiert automatisch Frage-Antwort-Karten basierend auf den Kerninhalten Ihrer Dokumente – ideal zum Abfragen und Festigen von Wissen.' },
-    { id: 'exam', label: 'Prüfung', icon: AcademicCapIcon, description: 'Erstellt einen simulierten Test mit relevanten Fragen zu Ihren Unterlagen, um Ihr Wissen zu überprüfen und Sie auf echte Prüfungen vorzubereiten.' },
-  ];
 
   const handleStartGeneration = () => {
     if (!selectedScriptAction) {
@@ -513,23 +484,6 @@ export default function App() {
             console.error("Unbekannte Aktion ausgewählt");
     }
   };
-
-  const getButtonTextAndAction = () => {
-      if (!practiceFile) return { text: "Aktion wählen", action: () => {}, disabled: true };
-      if (activeMode === 'solution') {
-          return {
-              text: solutionMode === 'direct' ? 'Übungsaufgaben lösen' : 'Geführte Lösung starten',
-              action: solutionMode === 'direct' ? handleSolvePractice : handleStartGuidedOrSimulation
-          };
-      } else { // simulation
-          return {
-              text: simulationMode === 'coop' ? 'Co-op-Sitzung starten' : 'VS-Match starten',
-              action: handleStartGuidedOrSimulation
-          };
-      }
-  };
-
-  const { text: buttonText, action: buttonAction } = getButtonTextAndAction();
   
   const renderContent = () => {
     if (showSessionPrompt) {
@@ -538,174 +492,84 @@ export default function App() {
 
     switch (appState) {
       case 'loading': return <LoadingSpinner progress={progress} message={loadingMessage} />;
-      case 'success': return (
-            <>
-                <GuideDisplay guide={guide} solvedQuestions={solvedQuestions} onAskFollowUp={guide.length > 0 ? handleAskFollowUp : undefined} openStepIndex={openStepIndex} onStepClick={setOpenStepIndex} />
-                <div className="mt-8 text-center flex flex-col sm:flex-row gap-4 justify-center">
-                    <button onClick={handleExportToPdf} disabled={isExportingPdf} className="inline-flex items-center justify-center px-6 py-2 bg-slate-600 text-white font-semibold rounded-lg shadow-md hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-opacity-75 disabled:bg-slate-400 disabled:cursor-wait">
-                        {isExportingPdf ? (<><svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Exportiere...</>) : (<><DocumentArrowDownIcon className="h-5 w-5 mr-2" /> Als PDF exportieren</>)}
-                    </button>
-                    <button onClick={handleReset} className={`px-6 py-2 ${theme['bg-primary-600']} ${theme['hover:bg-primary-700']} text-white font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 ${theme['focus:ring-primary-400']} focus:ring-opacity-75`}> Neue Analyse starten </button>
-                </div>
-            </>
-        );
+      case 'resultsDashboard': return (
+        <ResultsDashboard 
+            generatedContent={generatedContent}
+            scriptFiles={scriptFiles}
+            model={model}
+            onAskFollowUp={handleAskFollowUp}
+            openStepIndex={openStepIndex}
+            onStepClick={setOpenStepIndex}
+            onReset={handleReset}
+            onExportToPdf={handleExportToPdf}
+            isExportingPdf={isExportingPdf}
+            // Add More Content Props
+            handleGenerateGuide={handleGenerateGuide}
+            handleGenerateKeyConcepts={handleGenerateKeyConcepts}
+            handleGenerateFlashcards={handleGenerateFlashcards}
+            handleStartExam={handleStartExam}
+            detailLevel={detailLevel}
+            setDetailLevel={setDetailLevel}
+            setModel={setModel}
+            useStrictContext={useStrictContext}
+            setUseStrictContext={setUseStrictContext}
+        />
+      );
       case 'guided': return <GuidedSolution scriptFiles={scriptFiles} practiceFile={practiceFile!} questions={practiceQuestions} model={model} onExit={handleReturnToConfig} />;
       case 'simulation': return <SimulationMode scriptFiles={scriptFiles} practiceFile={practiceFile!} questions={practiceQuestions} model={model} mode={simulationMode} onExit={handleReturnToConfig} />;
       case 'exam': return <ExamMode questions={examQuestions} onSubmit={handleGradeExam} onExit={handleReturnToConfig} />;
-      case 'examResults': return <ExamResults results={examResults} onRetry={handleReset} scriptFiles={scriptFiles} model={model} />;
-      case 'keyConcepts': return <KeyConceptsDisplay concepts={keyConcepts} onReturn={handleReset} />;
-      case 'flashcards': return <FlashcardMode flashcards={flashcards} onExit={handleReset} />;
       case 'error': return (
           <div className="text-center p-8 bg-red-100 dark:bg-red-900/50 border border-red-400 dark:border-red-600 rounded-lg max-w-2xl mx-auto">
             <h3 className="text-xl font-semibold text-red-800 dark:text-red-200">Fehler</h3>
             <p className="mt-2 text-red-600 dark:text-red-300">{error}</p>
-            <button onClick={handleReset} className="mt-4 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">Erneut versuchen</button>
+            <div className="mt-4">
+              <Button onClick={handleReset} variant="primary">
+                Erneut versuchen
+              </Button>
+            </div>
           </div>
         );
       case 'initial':
       default:
         return (
-          <div className="text-center max-w-2xl mx-auto">
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">Verwandle Dokumente in interaktive Lernpfade</h2>
-            <p className="mt-4 text-lg text-slate-600 dark:text-slate-300">Lade ein oder mehrere Skripte hoch, um einen Lern-Guide zu erhalten, oder füge Übungsaufgaben hinzu, um diese lösen zu lassen.</p>
-            <div className="mt-8 space-y-6">
-              <FileUpload onFilesAdd={handleAddScriptFiles} isLoading={false} label="1. Skript(e) / Vorlesungsfolien hochladen" />
+            <SetupWizard
+              // File Management
+              scriptFiles={scriptFiles}
+              practiceFile={practiceFile}
+              handleAddScriptFiles={handleAddScriptFiles}
+              handleRemoveScriptFile={handleRemoveScriptFile}
+              setPracticeFile={setPracticeFile}
+              urlInput={urlInput}
+              setUrlInput={setUrlInput}
+              isUrlLoading={isUrlLoading}
+              handleLoadFromUrl={handleLoadFromUrl}
+              error={error}
               
-              <div className="flex items-center text-slate-500 dark:text-slate-400">
-                  <div className="flex-grow border-t border-slate-300 dark:border-slate-700"></div>
-                  <span className="flex-shrink mx-4 text-sm font-semibold">ODER</span>
-                  <div className="flex-grow border-t border-slate-300 dark:border-slate-700"></div>
-              </div>
+              // Lernpfad-Optionen
+              selectedScriptAction={selectedScriptAction}
+              setSelectedScriptAction={setSelectedScriptAction}
+              detailLevel={detailLevel}
+              setDetailLevel={setDetailLevel}
+              
+              // Übungspfad-Optionen
+              activeMode={activeMode}
+              setActiveMode={setActiveMode}
+              solutionMode={solutionMode}
+              setSolutionMode={setSolutionMode}
+              simulationMode={simulationMode}
+              setSimulationMode={setSimulationMode}
 
-              <div>
-                  <label htmlFor="url-input" className="block text-sm font-medium text-left text-slate-700 dark:text-slate-300 mb-2">
-                      Inhalt von URL laden
-                  </label>
-                  <div className="flex gap-2">
-                      <div className="relative flex-grow">
-                          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                              <LinkIcon className="h-5 w-5 text-slate-400" aria-hidden="true" />
-                          </div>
-                          <input 
-                              id="url-input"
-                              type="url"
-                              value={urlInput}
-                              onChange={(e) => setUrlInput(e.target.value)}
-                              onKeyDown={(e) => { if (e.key === 'Enter') handleLoadFromUrl(); }}
-                              disabled={isUrlLoading}
-                              placeholder="https://beispiel.de/mein-skript.html"
-                              className={`w-full rounded-md border-0 py-2 pl-10 text-slate-900 dark:text-slate-200 bg-white dark:bg-slate-800/50 ring-1 ring-inset ring-slate-300 dark:ring-slate-700 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-inset ${theme['focus:ring-primary-600']}`}
-                          />
-                      </div>
-                      <button 
-                          onClick={handleLoadFromUrl}
-                          disabled={!urlInput.trim() || isUrlLoading}
-                          className={`inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white rounded-md shadow-sm transition-colors ${theme['bg-primary-600']} ${theme['hover:bg-primary-700']} focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${theme['focus-visible:outline-primary-600']} disabled:bg-slate-400 dark:disabled:bg-slate-600 disabled:cursor-not-allowed`}
-                      >
-                           {isUrlLoading ? (
-                                <>
-                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                    Lädt...
-                                </>
-                            ) : "Laden"}
-                      </button>
-                  </div>
-                   {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400 text-left">{error}</p>}
-              </div>
-
-              {scriptFiles.length > 0 && (
-                <div className="mt-4 text-left">
-                  <h4 className="font-semibold text-slate-700 dark:text-slate-300">Hochgeladene Lern-Grundlagen:</h4>
-                  <ul className="mt-2 space-y-2">
-                    {scriptFiles.map((file, index) => (
-                      <li key={`${file.name}-${index}`} className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 p-2 rounded-md text-sm">
-                        <span className="text-slate-800 dark:text-slate-200 truncate pr-2">{file.name}</span>
-                        <button onClick={() => handleRemoveScriptFile(index)} className="p-1 rounded-full text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200">
-                          <XMarkIcon className="h-4 w-4" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-            
-            {scriptFiles.length > 0 && (
-                <div className="mt-8 space-y-8 p-6 bg-white dark:bg-slate-800/50 rounded-lg shadow-sm">
-                    <div className="animate-fade-in">
-                        <h3 className="text-lg font-medium text-slate-900 dark:text-slate-200 mb-4">Optional: Übungen hinzufügen</h3>
-                        <FileUpload onFilesAdd={(files) => setPracticeFile(files[0])} isLoading={false} label="2. Übungsaufgaben / Probeklausur" description="Datei hierher ziehen oder auswählen" />
-                    </div>
-                     
-                    {practiceFile ? (
-                        <div className="animate-fade-in" style={{animationDelay: '100ms'}}>
-                            {/* Practice Mode Options */}
-                            <fieldset><legend className="text-base font-medium text-slate-900 dark:text-slate-200 mb-2">Modus wählen</legend>
-                                <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 p-1">
-                                    <div key="solution"><input type="radio" id="solution" name="active-mode" value="solution" checked={activeMode === 'solution'} onChange={() => setActiveMode('solution')} className="sr-only"/><label htmlFor="solution" className={`cursor-pointer select-none rounded-md p-2 text-center text-sm font-medium transition-colors duration-200 ${activeMode === 'solution' ? `${theme['bg-primary-600']} text-white shadow` : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700' }`}>Lösung</label></div>
-                                    <div key="simulation"><input type="radio" id="simulation" name="active-mode" value="simulation" checked={activeMode === 'simulation'} onChange={() => setActiveMode('simulation')} className="sr-only"/><label htmlFor="simulation" className={`cursor-pointer select-none rounded-md p-2 text-center text-sm font-medium transition-colors duration-200 ${activeMode === 'simulation' ? `${theme['bg-primary-600']} text-white shadow` : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700' }`}>Simulation</label></div>
-                                </div>
-                            </fieldset>
-                            {activeMode === 'solution' ? (
-                                <fieldset className="mt-4"><legend className="text-base font-medium text-slate-900 dark:text-slate-200 mb-2">Lösungsmodus</legend><div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 p-1">{solutionModeOptions.map(o => <div key={o.id}><input type="radio" id={`sol-${o.id}`} name="solution-mode" value={o.id} checked={solutionMode === o.id} onChange={() => setSolutionMode(o.id as SolutionMode)} className="sr-only"/><label htmlFor={`sol-${o.id}`} className={`flex flex-col items-center justify-center cursor-pointer select-none rounded-md p-3 text-center text-sm font-medium transition-colors ${solutionMode === o.id ? `bg-white dark:bg-slate-700 ${theme['text-primary-600_dark-400']} dark:text-white shadow-sm` : 'hover:bg-white/60 dark:hover:bg-slate-700/60'}`}><o.icon className="h-6 w-6 mb-1" />{o.label}</label></div>)}</div></fieldset>
-                            ) : (
-                                <fieldset className="mt-4"><legend className="text-base font-medium text-slate-900 dark:text-slate-200 mb-2">Simulations-Typ</legend><div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 p-1">{simulationModeOptions.map(o => <div key={o.id}><input type="radio" id={`sim-${o.id}`} name="simulation-mode" value={o.id} checked={simulationMode === o.id} onChange={() => setSimulationMode(o.id as SimulationModeType)} className="sr-only"/><label htmlFor={`sim-${o.id}`} className={`flex flex-col items-center justify-center cursor-pointer select-none rounded-md p-3 text-center text-sm font-medium transition-colors ${simulationMode === o.id ? `bg-white dark:bg-slate-700 ${theme['text-primary-600_dark-400']} dark:text-white shadow-sm` : 'hover:bg-white/60 dark:hover:bg-slate-700/60'}`}><o.icon className="h-6 w-6 mb-1" />{o.label}</label></div>)}</div></fieldset>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="animate-fade-in space-y-6" style={{animationDelay: '100ms'}}>
-                            <fieldset>
-                                <legend className="text-base font-medium text-slate-900 dark:text-slate-200 mb-2">Detaillierungsgrad (nur für Lern-Guide)</legend>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 p-1">
-                                    {detailOptions.map((o) => (
-                                        <div key={o.id}>
-                                            <input type="radio" name="detail-level" id={o.id} value={o.id} checked={detailLevel === o.id} onChange={() => setDetailLevel(o.id as DetailLevel)} className="sr-only" />
-                                            <label htmlFor={o.id} className={`flex flex-col items-center justify-center cursor-pointer select-none rounded-md p-3 text-center text-sm font-medium transition-colors ${detailLevel === o.id ? `${theme['bg-primary-600']} text-white shadow` : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700' }`}>
-                                                <o.icon className="h-6 w-6 mb-1" />
-                                                {o.label}
-                                            </label>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="mt-3 text-sm text-slate-600 dark:text-slate-400 min-h-[3em]"><p>{detailDescriptions[detailLevel]}</p></div>
-                            </fieldset>
-                        </div>
-                    )}
-
-                    <fieldset className="animate-fade-in" style={{animationDelay: '200ms'}}><legend className="text-base font-medium text-slate-900 dark:text-slate-200 mb-2">KI-Modell</legend><div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 p-1">{modelOptions.map((o) => <div key={o.id}><input type="radio" name="model-select" id={o.id} value={o.id} checked={model === o.id} onChange={() => setModel(o.id as ModelName)} className="sr-only" /><label htmlFor={o.id} className={`flex flex-col items-center justify-center cursor-pointer select-none rounded-md p-3 text-center text-sm font-medium transition-colors ${model === o.id ? `${theme['bg-primary-600']} text-white shadow` : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}><CpuChipIcon className="h-6 w-6 mb-1" />{o.label}</label></div>)}</div><div className="mt-3 text-sm text-slate-600 dark:text-slate-400 min-h-[3em]"><p>{modelDescriptions[model]}</p></div></fieldset>
-                    <div className="flex items-center justify-center animate-fade-in" style={{animationDelay: '300ms'}}><input id="strict-context-checkbox" type="checkbox" checked={useStrictContext} onChange={(e) => setUseStrictContext(e.target.checked)} className={`h-4 w-4 rounded border-slate-300 dark:border-slate-600 ${theme['text-primary-600_dark-400']} focus:ring-indigo-500 bg-transparent`} /><label htmlFor="strict-context-checkbox" className="ml-2 block text-sm text-slate-700 dark:text-slate-300 select-none">Nur Inhalt aus Skripten verwenden (empfohlen)</label></div>
-                    
-                    <div className="animate-fade-in mt-8" style={{animationDelay: '400ms'}}>
-                        {practiceFile ? (
-                             <button onClick={buttonAction} className={`w-full px-8 py-3 ${theme['bg-primary-600']} text-white font-bold text-lg rounded-lg shadow-lg ${theme['hover:bg-primary-700']} focus:outline-none focus:ring-2 ${theme['focus:ring-primary-400']} focus:ring-opacity-75 transition-all transform hover:scale-105`}>{buttonText}</button>
-                        ) : (
-                            <div className="space-y-6">
-                                <div>
-                                    <legend className="text-base font-medium text-slate-900 dark:text-slate-200 mb-2">Was möchtest du tun?</legend>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 p-1">
-                                        {scriptActionOptions.map((opt) => (
-                                            <div key={opt.id}>
-                                                <input type="radio" name="script-action" id={opt.id} value={opt.id} checked={selectedScriptAction === opt.id} onChange={() => setSelectedScriptAction(opt.id as ScriptAction)} className="sr-only" />
-                                                <label htmlFor={opt.id} className={`flex flex-col items-center justify-center cursor-pointer select-none rounded-md p-3 text-center text-sm font-medium transition-colors duration-200 h-full ${selectedScriptAction === opt.id ? `bg-white dark:bg-slate-700 ${theme['text-primary-600_dark-400']} dark:text-white shadow-sm` : 'hover:bg-white/60 dark:hover:bg-slate-700/60'}`}>
-                                                    <opt.icon className="h-6 w-6 mb-1.5" />
-                                                    {opt.label}
-                                                </label>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="text-center text-sm text-slate-600 dark:text-slate-400 min-h-[4em] bg-slate-50 dark:bg-slate-800/60 p-3 rounded-md border border-slate-200 dark:border-slate-700 flex items-center justify-center">
-                                    <p>{scriptActionOptions.find(opt => opt.id === selectedScriptAction)?.description}</p>
-                                </div>
-                                <button onClick={handleStartGeneration} className={`w-full px-8 py-3 ${theme['bg-primary-600']} text-white font-bold text-lg rounded-lg shadow-lg ${theme['hover:bg-primary-700']} focus:outline-none focus:ring-2 ${theme['focus:ring-primary-400']} focus:ring-opacity-75 transition-all transform hover:scale-105`}>
-                                    Ausgewählte Aktion starten
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-          </div>
+              // Allgemeine Optionen
+              model={model}
+              setModel={setModel}
+              useStrictContext={useStrictContext}
+              setUseStrictContext={setUseStrictContext}
+              
+              // Aktionen
+              handleStartGeneration={handleStartGeneration}
+              handleSolvePractice={handleSolvePractice}
+              handleStartGuidedOrSimulation={handleStartGuidedOrSimulation}
+          />
         );
     }
   };
@@ -722,7 +586,7 @@ export default function App() {
             backgroundColor: 'white',
           }}
         >
-          <PdfPreview guide={guide} solvedQuestions={solvedQuestions} />
+          <PdfPreview guide={generatedContent.guide ?? undefined} solvedQuestions={generatedContent.solvedQuestions ?? undefined} />
         </div>
       )}
       <header className="py-4 px-4 sm:px-6 lg:px-8 border-b border-slate-200 dark:border-slate-800">
@@ -746,7 +610,11 @@ export default function App() {
         </div>
       </header>
       <main className="py-10 px-4 sm:px-6 lg:px-8">
-        <Notification message={saveNotification} onDismiss={() => setSaveNotification(null)} />
+        <Notification 
+          message={notification?.message ?? null} 
+          type={notification?.type ?? 'warning'} 
+          onDismiss={() => setNotification(null)} 
+        />
         {renderContent()}
       </main>
       <footer className="text-center py-4 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800"><p>Powered by Google Gemini</p></footer>
