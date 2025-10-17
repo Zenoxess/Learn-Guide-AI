@@ -4,18 +4,11 @@ import { startCoopChat, getAIOpponentAnswer, judgeAnswers } from '../services/ge
 import type { ChatMessage, ModelName, SimulationModeType, JudgedRound } from '../types';
 import { ArrowUturnLeftIcon, SendIcon, BrainCircuitIcon, UsersIcon, SparklesIcon } from './icons';
 import { useTheme } from '../contexts/ThemeContext';
-
-const markdownToHtml = (markdown: string): string => {
-  if (!markdown) return '';
-  return markdown.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/\n/g, '<br />');
-};
-
-const MarkdownRenderer: React.FC<{ content: string, className?: string }> = ({ content, className = '' }) => (
-    <div className={`prose prose-sm prose-slate dark:prose-invert max-w-none ${className}`} dangerouslySetInnerHTML={{ __html: markdownToHtml(content) }} />
-);
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface SimulationModeProps {
-  scriptFile: File;
+// FIX: Changed from scriptFile: File to scriptFiles: File[] to accept multiple script files.
+  scriptFiles: File[];
   practiceFile: File;
   questions: string[];
   model: ModelName;
@@ -25,7 +18,7 @@ interface SimulationModeProps {
 
 type QuestionStatus = 'not-started' | 'in-progress' | 'completed';
 
-export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFile, practiceFile, questions, model, mode, onExit }) => {
+export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFiles, practiceFile, questions, model, mode, onExit }) => {
   const { theme } = useTheme();
   const [isInitializing, setIsInitializing] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +49,8 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFile, prac
     const initialize = async () => {
         if (mode === 'coop') {
             try {
-                const chat = await startCoopChat(scriptFile, practiceFile, model);
+// FIX: Pass scriptFiles array to startCoopChat instead of a single file.
+                const chat = await startCoopChat(scriptFiles, practiceFile, model);
                 coopChatRef.current = chat;
                 const initialMsg: ChatMessage = { role: 'system', text: `Lasst uns mit der ersten Frage anfangen: "${questions[0]}" Was sind deine ersten Gedanken dazu?` };
                 setCoopMessages([initialMsg]);
@@ -67,7 +61,7 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFile, prac
         setIsInitializing(false);
     };
     initialize();
-  }, [mode, scriptFile, practiceFile, model, questions]);
+  }, [mode, scriptFiles, practiceFile, model, questions]);
 
   useEffect(() => {
     coopMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -80,8 +74,10 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFile, prac
     setError(null);
     try {
         const currentQuestion = questions[currentQuestionIndex];
-        const aiOpponentAnswer = await getAIOpponentAnswer(scriptFile, currentQuestion, model);
-        const result = await judgeAnswers(scriptFile, currentQuestion, userAnswer, aiOpponentAnswer, model);
+// FIX: Pass scriptFiles array to getAIOpponentAnswer instead of a single file.
+        const aiOpponentAnswer = await getAIOpponentAnswer(scriptFiles, currentQuestion, model);
+// FIX: Pass scriptFiles array to judgeAnswers instead of a single file.
+        const result = await judgeAnswers(scriptFiles, currentQuestion, userAnswer, aiOpponentAnswer, model);
         setCurrentRoundResult(result);
         setUserScore(prev => prev + result.userScore);
         setAiScore(prev => prev + result.aiScore);
@@ -153,9 +149,9 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFile, prac
         <div className="flex-grow p-6 overflow-y-auto bg-slate-50 dark:bg-slate-800">
             {isRoundOver && currentRoundResult ? (
                 <div className="space-y-6 animate-fade-in">
-                    <div><h4 className="font-bold mb-2 text-slate-700 dark:text-slate-300">Deine Antwort ({currentRoundResult.userScore} Pkt.)</h4><div className={`p-3 rounded-md ${theme['bg-primary-50_dark-900/30']}`}><MarkdownRenderer content={currentRoundResult.userAnswer} /></div></div>
-                    <div><h4 className="font-bold mb-2 text-slate-700 dark:text-slate-300">KI-Antwort ({currentRoundResult.aiScore} Pkt.)</h4><div className="p-3 rounded-md bg-rose-50 dark:bg-rose-900/30"><MarkdownRenderer content={currentRoundResult.aiAnswer} /></div></div>
-                    <div><h4 className="font-bold mb-2 text-slate-700 dark:text-slate-300">Urteil des Professors</h4><div className="p-3 rounded-md bg-slate-100 dark:bg-slate-700 italic"><MarkdownRenderer content={currentRoundResult.judgment} /></div></div>
+                    <div><h4 className="font-bold mb-2 text-slate-700 dark:text-slate-300">Deine Antwort ({currentRoundResult.userScore} Pkt.)</h4><div className={`p-3 rounded-md ${theme['bg-primary-50_dark-900/30']}`}><MarkdownRenderer content={currentRoundResult.userAnswer} className="prose-sm" /></div></div>
+                    <div><h4 className="font-bold mb-2 text-slate-700 dark:text-slate-300">KI-Antwort ({currentRoundResult.aiScore} Pkt.)</h4><div className="p-3 rounded-md bg-rose-50 dark:bg-rose-900/30"><MarkdownRenderer content={currentRoundResult.aiAnswer} className="prose-sm" /></div></div>
+                    <div><h4 className="font-bold mb-2 text-slate-700 dark:text-slate-300">Urteil des Professors</h4><div className="p-3 rounded-md bg-slate-100 dark:bg-slate-700 italic"><MarkdownRenderer content={currentRoundResult.judgment} className="prose-sm" /></div></div>
                 </div>
             ) : (
                 <form onSubmit={handleVsSubmit}>
@@ -191,7 +187,7 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFile, prac
                 :
                 <div key={index} className={`flex items-end gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     {msg.role === 'model' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-sm">P</div>}
-                    <div className={`p-3 rounded-2xl max-w-lg ${msg.role === 'user' ? `${theme['bg-primary-600']} text-white rounded-br-none` : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-none'}`}><MarkdownRenderer content={msg.text} /></div>
+                    <div className={`p-3 rounded-2xl max-w-lg ${msg.role === 'user' ? `${theme['bg-primary-600']} text-white rounded-br-none` : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-none'}`}><MarkdownRenderer content={msg.text} className="prose-sm" /></div>
                 </div>
             ))}
             {isCoopLoading && <div className="flex items-end gap-2 justify-start"><div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-sm">P</div><div className="p-3 rounded-2xl bg-slate-200 dark:bg-slate-700"><div className="flex items-center space-x-1"><span className="h-2 w-2 bg-slate-400 rounded-full animate-bounce"></span><span className="h-2 w-2 bg-slate-400 rounded-full animate-bounce delay-150"></span><span className="h-2 w-2 bg-slate-400 rounded-full animate-bounce delay-300"></span></div></div></div>}

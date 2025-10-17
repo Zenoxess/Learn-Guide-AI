@@ -2,22 +2,7 @@ import React from 'react';
 import type { GradedAnswer } from '../types';
 import { AcademicCapIcon, CheckIcon } from './icons';
 import { useTheme } from '../contexts/ThemeContext';
-
-// Helper to convert simple markdown to HTML for safe rendering
-const markdownToHtml = (markdown: string): string => {
-  if (!markdown) return '';
-  return markdown
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/\n/g, '<br />');
-};
-
-const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => (
-    <div 
-        className="prose prose-sm prose-slate dark:prose-invert max-w-none"
-        dangerouslySetInnerHTML={{ __html: markdownToHtml(content) }} 
-    />
-);
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface ExamResultsProps {
   results: GradedAnswer[];
@@ -65,19 +50,19 @@ export const ExamResults: React.FC<ExamResultsProps> = ({ results, onRetry }) =>
                         <div>
                             <h5 className="font-semibold text-slate-600 dark:text-slate-400 mb-1">Deine Antwort:</h5>
                             <blockquote className="border-l-4 border-slate-300 dark:border-slate-600 pl-4 italic text-slate-700 dark:text-slate-300">
-                               <MarkdownRenderer content={result.userAnswer || '(Keine Antwort gegeben)'} />
+                               <MarkdownRenderer content={result.userAnswer || '(Keine Antwort gegeben)'} className="prose-sm" />
                             </blockquote>
                         </div>
                          <div>
                             <h5 className="font-semibold text-slate-600 dark:text-slate-400 mb-1">Musterlösung:</h5>
                              <div className="p-3 rounded-md bg-slate-100 dark:bg-slate-900/50">
-                                <MarkdownRenderer content={result.suggestedAnswer} />
+                                <MarkdownRenderer content={result.suggestedAnswer} className="prose-sm" />
                              </div>
                         </div>
                         <div>
                             <h5 className="font-semibold text-slate-600 dark:text-slate-400 mb-1">Feedback:</h5>
                             <div className={`p-3 rounded-md ${theme['bg-primary-50_dark-900/30']}`}>
-                                <MarkdownRenderer content={result.feedback} />
+                                <MarkdownRenderer content={result.feedback} className="prose-sm" />
                             </div>
                         </div>
                     </div>

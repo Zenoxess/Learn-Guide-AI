@@ -4,28 +4,14 @@ import { startTutorChat } from '../services/geminiService';
 import type { ChatMessage, ModelName } from '../types';
 import { ArrowUturnLeftIcon, SendIcon, BrainCircuitIcon, DocumentArrowDownIcon } from './icons';
 import { useTheme } from '../contexts/ThemeContext';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 // TypeScript declarations for global libraries loaded via CDN
-declare const html2canvas: any;
 declare const jspdf: any;
 
-const markdownToHtml = (markdown: string): string => {
-  if (!markdown) return '';
-  return markdown
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/\n/g, '<br />');
-};
-
-const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => (
-    <div 
-        className="prose prose-slate dark:prose-invert max-w-none"
-        dangerouslySetInnerHTML={{ __html: markdownToHtml(content) }} 
-    />
-);
-
 interface GuidedSolutionProps {
-  scriptFile: File;
+// FIX: Changed from scriptFile: File to scriptFiles: File[] to accept multiple script files.
+  scriptFiles: File[];
   practiceFile: File;
   questions: string[];
   model: ModelName;
@@ -34,7 +20,7 @@ interface GuidedSolutionProps {
 
 type QuestionStatus = 'not-started' | 'in-progress' | 'completed';
 
-export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, practiceFile, questions, model, onExit }) => {
+export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFiles, practiceFile, questions, model, onExit }) => {
   const { theme } = useTheme();
   const chatRef = useRef<Chat | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
@@ -55,7 +41,8 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
   useEffect(() => {
     const initializeChat = async () => {
       try {
-        const chat = await startTutorChat(scriptFile, practiceFile, model);
+// FIX: Pass scriptFiles array to startTutorChat instead of a single file.
+        const chat = await startTutorChat(scriptFiles, practiceFile, model);
         chatRef.current = chat;
       } catch (err: any) {
         setError(err.message || "Der Chat mit dem Tutor konnte nicht gestartet werden.");
@@ -64,7 +51,7 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
       }
     };
     initializeChat();
-  }, [scriptFile, practiceFile, model]);
+  }, [scriptFiles, practiceFile, model]);
 
   const handleSelectQuestion = useCallback(async (index: number) => {
     if (isTutorLoading || !chatRef.current) return;
@@ -122,59 +109,57 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
   };
 
   const handleExportPdf = async () => {
-      const chatContainer = chatContentRef.current;
-      if (!chatContainer || typeof html2canvas === 'undefined' || typeof jspdf === 'undefined') {
+      if (typeof jspdf === 'undefined' || selectedQuestionIndex === null) {
           setError("Die PDF-Export-Funktion konnte nicht geladen werden.");
           return;
       }
       setIsExportingPdf(true);
       setError(null);
 
-      // Store original styles to restore them later
-      const originalHeight = chatContainer.style.height;
-      const originalOverflow = chatContainer.style.overflowY;
-
-      // Temporarily modify styles to capture the full content
-      chatContainer.style.height = `${chatContainer.scrollHeight}px`;
-      chatContainer.style.overflowY = 'visible';
-
       try {
           const { jsPDF } = jspdf;
-          const canvas = await html2canvas(chatContainer, {
-              scale: 2,
-              useCORS: true,
-              // Ensure the canvas is created with the full height of the content
-              windowHeight: chatContainer.scrollHeight,
-              windowWidth: chatContainer.scrollWidth,
-              scrollY: -window.scrollY // Capture from the top of the element
-          });
-          const imgData = canvas.toDataURL('image/png');
-          const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-          const pdfWidth = pdf.internal.pageSize.getWidth();
-          const imgProps = pdf.getImageProperties(imgData);
-          const imgHeightInPdf = (imgProps.height * pdfWidth) / imgProps.width;
-
-          let heightLeft = imgHeightInPdf;
-          let position = 0;
-
-          pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeightInPdf, undefined, 'FAST');
-          heightLeft -= pdf.internal.pageSize.getHeight();
-
-          while (heightLeft > 0) {
-              position -= pdf.internal.pageSize.getHeight();
-              pdf.addPage();
-              pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeightInPdf, undefined, 'FAST');
-              heightLeft -= pdf.internal.pageSize.getHeight();
-          }
+          const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
           
-          pdf.save(`lern-chat-frage-${selectedQuestionIndex! + 1}.pdf`);
+          const MARGIN = 15;
+          const PAGE_WIDTH = doc.internal.pageSize.getWidth();
+          const PAGE_HEIGHT = doc.internal.pageSize.getHeight();
+          const TEXT_WIDTH = PAGE_WIDTH - MARGIN * 2;
+          let y = MARGIN;
+
+          const addTextWithBreaks = (text: string, options: { fontSize?: number, style?: 'normal' | 'bold' | 'italic' } = {}) => {
+              const { fontSize = 10, style = 'normal' } = options;
+              doc.setFontSize(fontSize);
+              doc.setFont('helvetica', style);
+
+              const lines = doc.splitTextToSize(text, TEXT_WIDTH);
+              const textHeight = lines.length * (fontSize * 0.35);
+
+              if (y + textHeight > PAGE_HEIGHT - MARGIN) {
+                  doc.addPage();
+                  y = MARGIN;
+              }
+
+              doc.text(lines, MARGIN, y);
+              y += textHeight + 4; 
+          };
+          
+          addTextWithBreaks(`Chat-Protokoll: Frage ${selectedQuestionIndex + 1}`, { fontSize: 18, style: 'bold' });
+          addTextWithBreaks(questions[selectedQuestionIndex], { fontSize: 12, style: 'italic' });
+          y += 10;
+
+          messages.forEach(msg => {
+              const prefix = msg.role === 'user' ? 'Du: ' : 'AI Tutor: ';
+              const style = msg.role === 'user' ? 'bold' : 'normal';
+              const cleanText = msg.text.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
+
+              addTextWithBreaks(prefix + cleanText, { style });
+          });
+          
+          doc.save(`lern-chat-frage-${selectedQuestionIndex + 1}.pdf`);
       } catch (err) {
           console.error("PDF export failed", err);
           setError("Der PDF-Export ist fehlgeschlagen.");
       } finally {
-          // Restore original styles
-          chatContainer.style.height = originalHeight;
-          chatContainer.style.overflowY = originalOverflow;
           setIsExportingPdf(false);
       }
   };
@@ -292,7 +277,7 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
                         aria-label="Chat als PDF exportieren"
                     >
                         {isExportingPdf ? (
-                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="http://www.w3.org/2000/svg"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                         ) : (
                             <DocumentArrowDownIcon className="h-4 w-4 mr-1.5" />
                         )}

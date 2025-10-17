@@ -3,7 +3,7 @@ import { UploadIcon, CheckIcon } from './icons';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface FileUploadProps {
-  onFileSelect: (file: File) => void;
+  onFilesAdd: (files: File[]) => void;
   isLoading: boolean;
   acceptedFileTypes?: string;
   label?: string;
@@ -11,29 +11,28 @@ interface FileUploadProps {
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({ 
-  onFileSelect, 
+  onFilesAdd, 
   isLoading, 
   acceptedFileTypes = "image/*,application/pdf",
-  label = 'Dokument hierher ziehen',
-  description = 'oder klicken, um eine Datei auszuwählen'
+  label = 'Dokumente hierher ziehen',
+  description = 'oder klicken, um eine oder mehrere Dateien auszuwählen'
 }) => {
   const { theme } = useTheme();
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const processFile = (file: File) => {
-    setSelectedFile(file);
-    onFileSelect(file);
+  const processFiles = (files: File[]) => {
+    if (files.length === 0) return;
+    onFilesAdd(files);
     setIsSuccess(true);
     setTimeout(() => setIsSuccess(false), 2000);
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      processFile(file);
+    const files = event.target.files;
+    if (files) {
+      processFiles(Array.from(files));
     }
     // Reset file input to allow re-uploading the same file name
     event.target.value = '';
@@ -69,11 +68,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({
 
     if(isLoading || isSuccess) return;
 
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-        processFile(file);
+    const files = e.dataTransfer.files;
+    if (files) {
+        processFiles(Array.from(files));
     }
-  }, [isLoading, isSuccess, onFileSelect]);
+  }, [isLoading, isSuccess, onFilesAdd]);
   
   const dropzoneClasses = `
     relative block w-full border-2 border-dashed rounded-lg p-12 text-center 
@@ -107,29 +106,25 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           onChange={handleFileChange}
           accept={acceptedFileTypes}
           disabled={isLoading}
+          multiple
         />
 
         {isSuccess ? (
           <div className="flex flex-col items-center justify-center">
             <CheckIcon className="mx-auto h-12 w-12 text-green-500" />
             <span className="mt-2 block text-sm font-medium text-green-700 dark:text-green-300">
-              Datei erfolgreich ausgewählt!
+              Dateien erfolgreich hinzugefügt!
             </span>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center">
             <UploadIcon className={`mx-auto h-12 w-12 transition-colors duration-200 ${isDragOver ? theme['text-primary-500'] : theme['text-primary-400_dark-500']}`} />
             <span className="mt-2 block text-sm font-medium text-slate-900 dark:text-slate-200">
-              {isDragOver ? 'Datei hier ablegen' : label}
+              {isDragOver ? 'Dateien hier ablegen' : label}
             </span>
             <span className="block text-xs text-slate-500 dark:text-slate-400">
               {description}
             </span>
-            {selectedFile && !isSuccess && (
-                 <span className="mt-2 block text-xs text-slate-500 dark:text-slate-400">
-                    Aktuell: {selectedFile.name}
-                 </span>
-            )}
           </div>
         )}
       </div>

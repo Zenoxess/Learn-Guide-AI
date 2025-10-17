@@ -1,5 +1,5 @@
-import { GoogleGenAI, Type, Chat } from "@google/genai";
-import type { GuideResponse, PracticeResponse, DetailLevel, ModelName, ExamQuestion, ExamAnswer, ExamResult, GradedAnswer, JudgedRound } from '../types';
+import { GoogleGenAI, Type, Chat, Part, Content } from "@google/genai";
+import type { GuideResponse, PracticeResponse, DetailLevel, ModelName, ExamQuestion, ExamAnswer, ExamResult, GradedAnswer, JudgedRound, KeyConceptsResponse, FlashcardsResponse } from '../types';
 
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -16,25 +16,30 @@ const fileToBase64 = (file: File): Promise<string> => {
   });
 };
 
-export const generateStudyGuide = async (file: File, useStrictContext: boolean, detailLevel: DetailLevel, model: ModelName): Promise<GuideResponse> => {
+const filesToGenerativeParts = (files: File[]): Promise<Part[]> => {
+    return Promise.all(
+        files.map(async (file) => ({
+            inlineData: {
+                mimeType: file.type,
+                data: await fileToBase64(file),
+            },
+        }))
+    );
+};
+
+
+export const generateStudyGuide = async (files: File[], useStrictContext: boolean, detailLevel: DetailLevel, model: ModelName): Promise<GuideResponse> => {
   if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable is not set");
   }
 
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const base64Data = await fileToBase64(file);
-
-  const filePart = {
-    inlineData: {
-      mimeType: file.type,
-      data: base64Data,
-    },
-  };
+  const fileParts = await filesToGenerativeParts(files);
 
   const basePrompt = `
-    Du bist ein erfahrener Universitäts-Tutor und Lernassistent. Deine Aufgabe ist es, das hochgeladene Dokument (z.B. eine Vorlesungsfolie, ein Übungsblatt oder ein Skriptausschnitt) zu analysieren.
+    Du bist ein erfahrener Universitäts-Tutor und Lernassistent. Deine Aufgabe ist es, die hochgeladenen Dokumente (z.B. eine Vorlesungsfolie, ein Übungsblatt oder ein Skriptausschnitt) zu analysieren.
 
-    Erstelle basierend auf dem Dokument eine schrittweise Anleitung, die einem Studenten hilft, den Inhalt zu verstehen und zu bearbeiten. Für jeden Schritt sollst du:
+    Erstelle basierend auf den Dokumenten eine schrittweise Anleitung, die einem Studenten hilft, den Inhalt zu verstehen und zu bearbeiten. Für jeden Schritt sollst du:
     1. Eine klare und verständliche Erklärung liefern.
     2. Hilfreiche Tipps und Tricks geben.
     3. Mögliche Lösungswege oder Denkansätze aufzeigen, insbesondere bei Übungsaufgaben.
@@ -65,7 +70,7 @@ export const generateStudyGuide = async (file: File, useStrictContext: boolean, 
 
 
   const strictContextInstruction = `
-    WICHTIG: Deine gesamte Antwort muss sich AUSSCHLIESSLICH auf die Informationen stützen, die im hochgeladenen Dokument enthalten sind. Ziehe kein externes Wissen hinzu und erfinde keine Informationen, die nicht direkt aus dem Dokument ableitbar sind.
+    WICHTIG: Deine gesamte Antwort muss sich AUSSCHLIESSLICH auf die Informationen stützen, die in den hochgeladenen Dokumenten enthalten sind. Ziehe kein externes Wissen hinzu und erfinde keine Informationen, die nicht direkt aus den Dokumenten ableitbar sind.
     `;
 
   const prompt = useStrictContext 
@@ -75,7 +80,7 @@ export const generateStudyGuide = async (file: File, useStrictContext: boolean, 
 
   const response = await ai.models.generateContent({
     model: model,
-    contents: { parts: [{ text: prompt }, filePart] },
+    contents: { parts: [{ text: prompt }, ...fileParts] },
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -143,41 +148,39 @@ export const askFollowUpQuestion = async (context: string, question: string): Pr
   return response.text;
 };
 
-export const solvePracticeQuestions = async (scriptFile: File, practiceFile: File, model: ModelName): Promise<PracticeResponse> => {
+export const solvePracticeQuestions = async (scriptFiles: File[], practiceFile: File, model: ModelName): Promise<PracticeResponse> => {
     if (!process.env.API_KEY) {
         throw new Error("API_KEY environment variable is not set");
     }
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-    const [scriptBase64, practiceBase64] = await Promise.all([
-        fileToBase64(scriptFile),
-        fileToBase64(practiceFile)
-    ]);
-
-    const scriptPart = { inlineData: { mimeType: scriptFile.type, data: scriptBase64 } };
+    const scriptParts = await filesToGenerativeParts(scriptFiles);
+    const practiceBase64 = await fileToBase64(practiceFile)
     const practicePart = { inlineData: { mimeType: practiceFile.type, data: practiceBase64 } };
 
     const prompt = `
       Du bist ein spezialisierter Universitäts-Tutor. Deine Aufgabe ist es, Übungsaufgaben zu lösen.
-      Du hast zwei Dokumente erhalten:
-      1. Das "Skript": Dies ist die einzige Wissensquelle, die du verwenden darfst.
+      Du hast Dokumente erhalten:
+      1. Die "Skripte": Dies ist die einzige Wissensquelle, die du verwenden darfst.
       2. Die "Übungsaufgaben": Dieses Dokument enthält die Fragen, die du beantworten sollst.
 
       DEINE AUFGABE:
       - Analysiere jede Frage aus dem "Übungsaufgaben"-Dokument.
-      - Finde die relevante Information zur Beantwortung der Frage AUSSCHLIESSLICH im "Skript"-Dokument.
+      - Finde die relevante Information zur Beantwortung der Frage AUSSCHLIESSLICH in den "Skript"-Dokumenten.
       - Formuliere für jede Frage eine umfassende Antwort und eine schrittweise Erklärung des Lösungswegs.
-      - Gib für jede Antwort eine präzise Referenz an, wo im "Skript" die Information gefunden wurde (z.B. "Siehe Folie 5, Abschnitt 'Thema X'" oder "Basierend auf der Formel im Kapitel Y").
+      - Gib für jede Antwort eine präzise Referenz an, wo in den "Skripten" die Information gefunden wurde (z.B. "Siehe Folie 5, Abschnitt 'Thema X'" oder "Basierend auf der Formel im Kapitel Y").
       - Deine gesamte Antwort muss auf Deutsch und im vorgegebenen JSON-Format sein. Verwende Markdown für die Formatierung der textuellen Inhalte.
     `;
 
+    const contents: Content[] = [
+        ...scriptParts.map(part => ({ parts: [{ text: "Das ist ein Skript:" }, part] })),
+        { parts: [{ text: "Das sind die Übungsaufgaben:" }, practicePart] },
+        { parts: [{ text: prompt }] }
+    ];
+
     const response = await ai.models.generateContent({
         model: model,
-        contents: [
-            { parts: [{ text: "Das ist das Skript:" }, scriptPart] },
-            { parts: [{ text: "Das sind die Übungsaufgaben:" }, practicePart] },
-            { parts: [{ text: prompt }] }
-        ],
+        contents: contents,
         config: {
             responseMimeType: "application/json",
             responseSchema: {
@@ -258,42 +261,43 @@ export const extractQuestions = async (practiceFile: File, model: ModelName): Pr
     }
 };
 
-export const startTutorChat = async (scriptFile: File, practiceFile: File, model: ModelName): Promise<Chat> => {
+export const startTutorChat = async (scriptFiles: File[], practiceFile: File, model: ModelName): Promise<Chat> => {
     if (!process.env.API_KEY) {
         throw new Error("API_KEY environment variable is not set");
     }
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-    const [scriptBase64, practiceBase64] = await Promise.all([
-        fileToBase64(scriptFile),
-        fileToBase64(practiceFile)
-    ]);
-
-    const scriptPart = { inlineData: { mimeType: scriptFile.type, data: scriptBase64 } };
+    const scriptParts = await filesToGenerativeParts(scriptFiles);
+    const practiceBase64 = await fileToBase64(practiceFile);
     const practicePart = { inlineData: { mimeType: practiceFile.type, data: practiceBase64 } };
 
     const systemInstruction = `
         Du bist ein Experte als Universitäts-Tutor. Deine Aufgabe ist es, einen Studenten durch die Lösung von Übungsaufgaben zu führen.
-        Du hast das relevante Skript und die Übungsaufgaben erhalten.
+        Du hast die relevanten Skripte und die Übungsaufgaben erhalten.
         
         DEINE REGELN:
         1.  **GIB NIEMALS DIE DIREKTE ANTWORT.** Deine Hauptaufgabe ist es, den Studenten zum selbstständigen Denken anzuregen.
         2.  **Stelle Gegenfragen.** Anstatt zu antworten, stelle eine Frage, die den Studenten in die richtige Richtung lenkt.
-        3.  **Verweise auf das Skript.** Sage Dinge wie: "Schau dir mal Folie 5 im Skript an. Was fällt dir dort im Abschnitt über Thema X auf?"
+        3.  **Verweise auf die Skripte.** Sage Dinge wie: "Schau dir mal Folie 5 im Skript an. Was fällt dir dort im Abschnitt über Thema X auf?"
         4.  **Gib Denkanstöße.** Biete Analogien, vereinfachte Beispiele oder schlage den ersten kleinen Schritt vor.
         5.  **Sei geduldig und ermutigend.** Formuliere positiv und bestärkend.
         6.  Beginne die Konversation für eine neue Frage immer, indem du den Studenten fragst, wie er anfangen würde.
         7.  Deine Antworten müssen auf Deutsch sein.
     `;
+    
+    const history: Content[] = [
+// FIX: Corrected the mapping of scriptParts to ensure proper content structure for chat history.
+        ...scriptParts.map(part => (
+            { role: 'user' as const, parts: [{ text: "Hier ist ein Skript, das wir als Wissensbasis verwenden werden." }, part] }
+        )),
+        { role: 'model' as const, parts: [{ text: "Verstanden. Ich habe die Skripte erhalten und werde sie als Teil der Wissensquelle nutzen." }] },
+        { role: 'user', parts: [{ text: "Und hier sind die Übungsaufgaben, die wir bearbeiten werden." }, practicePart] },
+        { role: 'model', parts: [{ text: "Perfekt, ich habe auch die Übungsaufgaben. Ich bin bereit, dich als Tutor zu unterstützen. Lass uns mit der ersten Frage beginnen, wenn du so weit bist." }] }
+    ];
 
     const chat = ai.chats.create({
         model: model,
-        history: [
-            { role: 'user', parts: [{ text: "Hier ist das Skript, das wir als Wissensbasis verwenden werden." }, scriptPart] },
-            { role: 'model', parts: [{ text: "Verstanden. Ich habe das Skript erhalten und werde es als einzige Wissensquelle nutzen." }] },
-            { role: 'user', parts: [{ text: "Und hier sind die Übungsaufgaben, die wir bearbeiten werden." }, practicePart] },
-            { role: 'model', parts: [{ text: "Perfekt, ich habe auch die Übungsaufgaben. Ich bin bereit, dich als Tutor zu unterstützen. Lass uns mit der ersten Frage beginnen, wenn du so weit bist." }] }
-        ],
+        history: history,
         config: {
             systemInstruction: systemInstruction,
         },
@@ -302,24 +306,23 @@ export const startTutorChat = async (scriptFile: File, practiceFile: File, model
     return chat;
 };
 
-export const generateExamQuestions = async (scriptFile: File, model: ModelName): Promise<ExamQuestion[]> => {
+export const generateExamQuestions = async (scriptFiles: File[], model: ModelName): Promise<ExamQuestion[]> => {
     if (!process.env.API_KEY) {
         throw new Error("API_KEY environment variable is not set");
     }
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const scriptBase64 = await fileToBase64(scriptFile);
-    const scriptPart = { inlineData: { mimeType: scriptFile.type, data: scriptBase64 } };
+    const scriptParts = await filesToGenerativeParts(scriptFiles);
 
     const prompt = `
-        Du bist ein Professor und erstellst eine Prüfung. Deine Aufgabe ist es, basierend auf dem hochgeladenen Skript eine Reihe von Prüfungsfragen zu generieren.
-        Die Fragen sollten das Verständnis der Kernkonzepte des Dokuments testen. Erstelle eine Mischung aus Wissensfragen und Transferfragen.
+        Du bist ein Professor und erstellst eine Prüfung. Deine Aufgabe ist es, basierend auf den hochgeladenen Skripten eine Reihe von Prüfungsfragen zu generieren.
+        Die Fragen sollten das Verständnis der Kernkonzepte der Dokumente testen. Erstelle eine Mischung aus Wissensfragen und Transferfragen.
         Generiere zwischen 5 und 8 Fragen.
         Gib die Fragen als JSON-Objekt zurück, das dem Schema entspricht. Jede Frage sollte eine eindeutige ID haben.
     `;
 
     const response = await ai.models.generateContent({
         model: model,
-        contents: [{ parts: [{ text: prompt }, scriptPart] }],
+        contents: { parts: [{ text: prompt }, ...scriptParts] },
         config: {
             responseMimeType: "application/json",
             responseSchema: {
@@ -352,34 +355,36 @@ export const generateExamQuestions = async (scriptFile: File, model: ModelName):
     }
 };
 
-export const gradeExamAnswers = async (scriptFile: File, answers: ExamAnswer[], model: ModelName): Promise<ExamResult> => {
+export const gradeExamAnswers = async (scriptFiles: File[], answers: ExamAnswer[], model: ModelName): Promise<ExamResult> => {
     if (!process.env.API_KEY) {
         throw new Error("API_KEY environment variable is not set");
     }
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const scriptBase64 = await fileToBase64(scriptFile);
-    const scriptPart = { inlineData: { mimeType: scriptFile.type, data: scriptBase64 } };
+    const scriptParts = await filesToGenerativeParts(scriptFiles);
 
     const prompt = `
-      Du bist ein fairer und genauer Prüfungskorrektor. Deine einzige Wissensquelle ist das bereitgestellte Skript.
+      Du bist ein fairer und genauer Prüfungskorrektor. Deine einzige Wissensquelle sind die bereitgestellten Skripte.
       Du hast die Antworten eines Studenten auf eine Reihe von Prüfungsfragen erhalten.
       
       Deine Aufgabe ist es, jede Antwort zu bewerten:
-      1.  **Vergleiche die Antwort des Studenten** mit den Informationen im Skript.
+      1.  **Vergleiche die Antwort des Studenten** mit den Informationen in den Skripten.
       2.  **Bewerte die Richtigkeit:** Entscheide, ob die Antwort im Wesentlichen korrekt ist ('isCorrect: true/false').
       3.  **Gib konstruktives Feedback:** Erkläre, warum die Antwort richtig oder falsch ist. Hebe Stärken hervor und zeige auf, wo Informationen fehlen oder falsch sind.
-      4.  **Formuliere eine Musterlösung:** Schreibe eine ideale, umfassende Antwort, basierend auf den Informationen aus dem Skript.
-      5.  Stelle sicher, dass deine gesamte Analyse AUSSCHLIESSLICH auf dem Inhalt des Skripts basiert.
+      4.  **Formuliere eine Musterlösung:** Schreibe eine ideale, umfassende Antwort, basierend auf den Informationen aus den Skripten.
+      5.  Stelle sicher, dass deine gesamte Analyse AUSSCHLIESSLICH auf dem Inhalt der Skripte basiert.
       6.  Gib das Ergebnis im geforderten JSON-Format zurück. Verwende Markdown für die textuellen Inhalte.
     `;
+    
+    const contents: Content[] = [
+        ...scriptParts.map(part => ({ parts: [{ text: "Hier ist ein Skript, das die korrekten Informationen enthält:" }, part] })),
+        { parts: [{ text: `Hier sind die Antworten des Studenten: ${JSON.stringify(answers)}` }] },
+        { parts: [{ text: prompt }] }
+    ];
+
 
     const response = await ai.models.generateContent({
         model: model,
-        contents: [
-            { parts: [{ text: "Hier ist das Skript, das die korrekten Informationen enthält:" }, scriptPart] },
-            { parts: [{ text: `Hier sind die Antworten des Studenten: ${JSON.stringify(answers)}` }] },
-            { parts: [{ text: prompt }] }
-        ],
+        contents: contents,
         config: {
             responseMimeType: "application/json",
             responseSchema: {
@@ -433,15 +438,125 @@ export const gradeExamAnswers = async (scriptFile: File, answers: ExamAnswer[], 
     }
 };
 
-// NEUE FUNKTIONEN FÜR SIMULATIONSMODUS
-
-export const startCoopChat = async (scriptFile: File, practiceFile: File, model: ModelName): Promise<Chat> => {
+export const generateKeyConcepts = async (scriptFiles: File[], model: ModelName): Promise<KeyConceptsResponse> => {
     if (!process.env.API_KEY) {
         throw new Error("API_KEY environment variable is not set");
     }
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const [scriptBase64, practiceBase64] = await Promise.all([fileToBase64(scriptFile), fileToBase64(practiceFile)]);
-    const scriptPart = { inlineData: { mimeType: scriptFile.type, data: scriptBase64 } };
+    const scriptParts = await filesToGenerativeParts(scriptFiles);
+
+    const prompt = `
+        Du bist ein Experte für Wissensextraktion. Deine Aufgabe ist es, aus den hochgeladenen Dokumenten (Skripte, Vorlesungsfolien) die wichtigsten Schlüsselkonzepte, Begriffe und Definitionen zu extrahieren.
+        
+        ANWEISUNGEN:
+        1.  Identifiziere die zentralen Fachbegriffe und Konzepte in den Texten.
+        2.  Formuliere für jeden Begriff eine prägnante und leicht verständliche Definition, die ausschließlich auf den Informationen aus den Dokumenten basiert.
+        3.  Gib das Ergebnis als Glossar im geforderten JSON-Format zurück.
+        4.  Stelle sicher, dass die extrahierten Begriffe relevant für das Gesamtthema der Dokumente sind.
+    `;
+
+    const response = await ai.models.generateContent({
+        model: model,
+        contents: { parts: [{ text: prompt }, ...scriptParts] },
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    keyConcepts: {
+                        type: Type.ARRAY,
+                        description: "Eine Liste von Schlüsselkonzepten und deren Definitionen.",
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                term: { type: Type.STRING, description: "Der Schlüsselbegriff oder das Konzept." },
+                                definition: { type: Type.STRING, description: "Eine klare und prägnante Definition des Begriffs." }
+                            },
+                            required: ["term", "definition"]
+                        }
+                    }
+                },
+                required: ["keyConcepts"]
+            }
+        }
+    });
+
+    const jsonText = response.text.trim();
+    try {
+        const parsed = JSON.parse(jsonText);
+        return parsed as KeyConceptsResponse;
+    } catch (e) {
+        console.error("Failed to parse key concepts from Gemini response:", jsonText);
+        throw new Error("Die Schlüsselkonzepte konnten nicht extrahiert werden.");
+    }
+};
+
+
+export const generateFlashcards = async (scriptFiles: File[], model: ModelName): Promise<FlashcardsResponse> => {
+    if (!process.env.API_KEY) {
+        throw new Error("API_KEY environment variable is not set");
+    }
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const scriptParts = await filesToGenerativeParts(scriptFiles);
+
+    const prompt = `
+        Du bist ein Lern-Experte. Deine Aufgabe ist es, aus den hochgeladenen Dokumenten (Skripte, Vorlesungsfolien) eine Reihe von Lernkarten zu erstellen.
+
+        ANWEISUNGEN:
+        1.  Analysiere die Dokumente und identifiziere die wichtigsten Konzepte, Definitionen, Fakten und Zusammenhänge.
+        2.  Erstelle für jeden wichtigen Punkt eine Lernkarte, bestehend aus einer klaren, präzisen Frage (Vorderseite) und einer korrekten, verständlichen Antwort (Rückseite).
+        3.  Die Fragen sollten so formuliert sein, dass sie zum aktiven Abrufen von Wissen anregen (z.B. "Was ist...?", "Erkläre den Unterschied zwischen...", "Welche 3 Faktoren beeinflussen...?").
+        4.  Die Antworten sollten sich ausschließlich auf die Informationen aus den Dokumenten stützen.
+        5.  Generiere eine sinnvolle Anzahl an Lernkarten, die die Kerninhalte der Dokumente abdecken.
+        6.  Gib das Ergebnis im geforderten JSON-Format zurück.
+    `;
+
+    const response = await ai.models.generateContent({
+        model: model,
+        contents: { parts: [{ text: prompt }, ...scriptParts] },
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    flashcards: {
+                        type: Type.ARRAY,
+                        description: "Eine Liste von Lernkarten.",
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                question: { type: Type.STRING, description: "Die Frage auf der Vorderseite der Lernkarte." },
+                                answer: { type: Type.STRING, description: "Die Antwort auf der Rückseite der Lernkarte." }
+                            },
+                            required: ["question", "answer"]
+                        }
+                    }
+                },
+                required: ["flashcards"]
+            }
+        }
+    });
+
+    const jsonText = response.text.trim();
+    try {
+        const parsed = JSON.parse(jsonText);
+        return parsed as FlashcardsResponse;
+    } catch (e) {
+        console.error("Failed to parse flashcards from Gemini response:", jsonText);
+        throw new Error("Die Lernkarten konnten nicht erstellt werden.");
+    }
+};
+
+
+// NEUE FUNKTIONEN FÜR SIMULATIONSMODUS
+
+export const startCoopChat = async (scriptFiles: File[], practiceFile: File, model: ModelName): Promise<Chat> => {
+    if (!process.env.API_KEY) {
+        throw new Error("API_KEY environment variable is not set");
+    }
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const scriptParts = await filesToGenerativeParts(scriptFiles);
+    const practiceBase64 = await fileToBase64(practiceFile);
     const practicePart = { inlineData: { mimeType: practiceFile.type, data: practiceBase64 } };
 
     const systemInstruction = `
@@ -450,66 +565,65 @@ export const startCoopChat = async (scriptFile: File, practiceFile: File, model:
         
         DEINE VERHALTENSREGELN:
         1.  **Sei kollaborativ:** Baue auf den Ideen des Nutzers auf. Sage Dinge wie "Das ist ein guter Anfang, was denkst du über...?" oder "Interessanter Punkt! Vielleicht könnten wir auch...".
-        2.  **Sei nicht perfekt:** Du musst nicht immer die richtige Antwort wissen. Gib ruhig zu, wenn du unsicher bist, und schlage vor, gemeinsam im Skript nachzusehen.
+        2.  **Sei nicht perfekt:** Du musst nicht immer die richtige Antwort wissen. Gib ruhig zu, wenn du unsicher bist, und schlage vor, gemeinsam in den Skripten nachzusehen.
         3.  **Stelle Fragen:** Beteilige dich aktiv an der Diskussion, indem du offene Fragen stellst.
         4.  **Bringe eigene Ideen ein:** Mache Vorschläge, aber präsentiere sie als Ideen, nicht als Fakten.
         5.  **Fokus auf den Prozess:** Das Ziel ist das gemeinsame Lernen, nicht das schnelle Finden der Lösung.
         6.  Verwende eine freundliche, informelle Sprache. Deine Antworten müssen auf Deutsch sein.
     `;
+    
+    const history: Content[] = [
+        ...scriptParts.flatMap(part => [
+            { role: 'user' as const, parts: [{ text: "Hier ist ein Skript." }, part] },
+            { role: 'model' as const, parts: [{ text: "Super, hab das Skript. Schau ich mir an." }] }
+        ]),
+        { role: 'user', parts: [{ text: "Und das sind die Übungen." }, practicePart] },
+        { role: 'model', parts: [{ text: "Okay, hab auch die Übungen. Bin bereit, lass uns die zusammen durchgehen!" }] }
+    ];
 
     return ai.chats.create({
         model: model,
-        history: [
-            { role: 'user', parts: [{ text: "Hier ist das Skript." }, scriptPart] },
-            { role: 'model', parts: [{ text: "Super, hab das Skript. Schau ich mir an." }] },
-            { role: 'user', parts: [{ text: "Und das sind die Übungen." }, practicePart] },
-            { role: 'model', parts: [{ text: "Okay, hab auch die Übungen. Bin bereit, lass uns die zusammen durchgehen!" }] }
-        ],
+        history: history,
         config: { systemInstruction },
     });
 };
 
-export const getAIOpponentAnswer = async (scriptFile: File, question: string, model: ModelName): Promise<string> => {
+export const getAIOpponentAnswer = async (scriptFiles: File[], question: string, model: ModelName): Promise<string> => {
     if (!process.env.API_KEY) throw new Error("API_KEY not set");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const scriptBase64 = await fileToBase64(scriptFile);
-    const scriptPart = { inlineData: { mimeType: scriptFile.type, data: scriptBase64 } };
+    const scriptParts = await filesToGenerativeParts(scriptFiles);
 
     const prompt = `
         Du bist ein ehrgeiziger Top-Student und nimmst an einem Wissenswettbewerb teil.
-        Deine einzige Informationsquelle ist das bereitgestellte Skript.
-        Deine Aufgabe: Beantworte die folgende Frage so präzise, umfassend und korrekt wie möglich, basierend auf dem Skript.
+        Deine einzige Informationsquelle sind die bereitgestellten Skripte.
+        Deine Aufgabe: Beantworte die folgende Frage so präzise, umfassend und korrekt wie möglich, basierend auf den Skripten.
         Formuliere eine Musterlösung. Deine Antwort entscheidet darüber, ob du gewinnst.
         Frage: "${question}"
     `;
 
     const response = await ai.models.generateContent({
         model,
-        contents: [
-            { parts: [{ text: "Das ist das Skript, deine Wissensquelle:" }, scriptPart] },
-            { parts: [{ text: prompt }] },
-        ],
+        contents: { parts: [{ text: "Das sind die Skripte, deine Wissensquelle:" }, ...scriptParts, { text: prompt }] }
     });
 
     return response.text;
 };
 
-export const judgeAnswers = async (scriptFile: File, questionText: string, userAnswer: string, aiAnswer: string, model: ModelName): Promise<JudgedRound> => {
+export const judgeAnswers = async (scriptFiles: File[], questionText: string, userAnswer: string, aiAnswer: string, model: ModelName): Promise<JudgedRound> => {
     if (!process.env.API_KEY) throw new Error("API_KEY not set");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const scriptBase64 = await fileToBase64(scriptFile);
-    const scriptPart = { inlineData: { mimeType: scriptFile.type, data: scriptBase64 } };
+    const scriptParts = await filesToGenerativeParts(scriptFiles);
 
     const prompt = `
         Du bist ein unparteiischer und strenger Professor, der zwei Antworten auf eine Prüfungsfrage bewertet.
-        Deine einzige Wissensquelle zur Bewertung ist das bereitgestellte Skript.
+        Deine einzige Wissensquelle zur Bewertung sind die bereitgestellten Skripte.
         
         Die Frage lautet: "${questionText}"
         Antwort von Student A (Mensch): "${userAnswer}"
         Antwort von Student B (KI): "${aiAnswer}"
 
         Deine Aufgabe:
-        1.  Vergleiche beide Antworten sorgfältig mit dem Inhalt des Skripts.
+        1.  Vergleiche beide Antworten sorgfältig mit dem Inhalt der Skripte.
         2.  Bewerte die Richtigkeit, Vollständigkeit und Präzision jeder Antwort.
         3.  Vergib Punkte von 0 bis 10 für jede Antwort. 10 ist eine perfekte Antwort, 0 ist komplett falsch.
         4.  Schreibe eine kurze, prägnante Begründung für deine Punktevergabe. Erkläre, welche Antwort besser war und warum.
@@ -518,10 +632,7 @@ export const judgeAnswers = async (scriptFile: File, questionText: string, userA
 
     const response = await ai.models.generateContent({
         model,
-        contents: [
-            { parts: [{ text: "Bewertungsgrundlage (Skript):" }, scriptPart] },
-            { parts: [{ text: prompt }] }
-        ],
+        contents: { parts: [{ text: "Bewertungsgrundlage (Skripte):" }, ...scriptParts, { text: prompt }] },
         config: {
             responseMimeType: "application/json",
             responseSchema: {

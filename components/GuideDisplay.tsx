@@ -2,56 +2,7 @@ import React, { useState } from 'react';
 import type { GuideStep, SolvedQuestion } from '../types';
 import { ChevronDownIcon, SendIcon } from './icons';
 import { useTheme } from '../contexts/ThemeContext';
-
-// Helper to convert simple markdown to HTML for safe rendering
-const markdownToHtml = (markdown: string): string => {
-  if (!markdown) return '';
-
-  const lines = markdown.split('\n');
-  let html = '';
-  let inList = false;
-
-  for (const line of lines) {
-    if (line.startsWith('## ')) {
-      if (inList) { html += '</ul>'; inList = false; }
-      html += `<h2>${line.substring(3)}</h2>`;
-      continue;
-    }
-    if (line.startsWith('# ')) {
-        if (inList) { html += '</ul>'; inList = false; }
-        html += `<h1>${line.substring(2)}</h1>`;
-        continue;
-    }
-    if (line.match(/^\s*[-*]\s/)) {
-      if (!inList) {
-        html += '<ul>';
-        inList = true;
-      }
-      html += `<li>${line.replace(/^\s*[-*]\s/, '')}</li>`;
-      continue;
-    }
-    
-    if (inList) {
-      html += '</ul>';
-      inList = false;
-    }
-    html += line ? `<p>${line}</p>` : '<br />';
-  }
-  if (inList) {
-    html += '</ul>';
-  }
-
-  return html
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>');
-};
-
-const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => (
-    <div 
-        className="prose prose-slate dark:prose-invert max-w-none"
-        dangerouslySetInnerHTML={{ __html: markdownToHtml(content) }} 
-    />
-);
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 const GuideAccordionItem: React.FC<{ step: GuideStep; isOpen: boolean; onClick: () => void; onAskFollowUp: (question: string) => Promise<void>; }> = ({ step, isOpen, onClick, onAskFollowUp }) => {
   const { theme } = useTheme();

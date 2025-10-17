@@ -69,3 +69,23 @@ export interface JudgedRound {
     userScore: number;
     aiScore: number;
 }
+
+// Schlüsselkonzepte
+export interface KeyConcept {
+  term: string;
+  definition: string;
+}
+
+export interface KeyConceptsResponse {
+  keyConcepts: KeyConcept[];
+}
+
+// Lernkarten
+export interface Flashcard {
+  question: string;
+  answer: string;
+}
+
+export interface FlashcardsResponse {
+  flashcards: Flashcard[];
+}
