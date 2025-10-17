@@ -14,7 +14,7 @@ export interface GuideResponse {
     guide: GuideStep[];
 }
 
-export type DetailLevel = 'overview' | 'standard' | 'detailed';
+export type DetailLevel = 'overview' | 'standard' | 'detailed' | 'eli5';
 export type ModelName = 'gemini-2.5-flash' | 'gemini-2.5-pro';
 
 export interface SolvedQuestion {

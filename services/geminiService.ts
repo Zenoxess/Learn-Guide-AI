@@ -1,20 +1,6 @@
 import { GoogleGenAI, Type, Chat, Part, Content } from "@google/genai";
 import type { GuideResponse, PracticeResponse, DetailLevel, ModelName, ExamQuestion, ExamAnswer, ExamResult, GradedAnswer, JudgedRound, KeyConceptsResponse, FlashcardsResponse } from '../types';
-
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result.split(',')[1]);
-      } else {
-        reject(new Error("Failed to convert file to base64"));
-      }
-    };
-    reader.onerror = (error) => reject(error);
-  });
-};
+import { fileToBase64 } from "../utils";
 
 const filesToGenerativeParts = (files: File[]): Promise<Part[]> => {
     return Promise.all(
@@ -82,6 +68,11 @@ export const generateStudyGuide = async (files: File[], useStrictContext: boolea
   
   let detailInstruction = '';
   switch (detailLevel) {
+    case 'eli5':
+      detailInstruction = `
+        ANWEISUNG ZUR DETAILLIERTHEIT: Erkläre alles so, als würdest du es einem 5-jährigen Kind erklären (ELI5 - Explain Like I'm 5). Verwende extrem einfache Sprache, kurze Sätze und alltägliche Analogien oder Metaphern, um komplexe Ideen zu veranschaulichen. Definiere jeden Fachbegriff sofort und auf simple Weise. Vermeide jeglichen Jargon und konzentriere dich nur auf die absolute Kernidee.
+      `;
+      break;
     case 'overview':
       detailInstruction = `
         ANWEISUNG ZUR DETAILLIERTHEIT: Fasse die wichtigsten Konzepte kurz und bündig zusammen. Konzentriere dich auf die Kernaussagen und Schlüsselbegriffe. Halte die Erklärungen kurz und auf den Punkt gebracht.

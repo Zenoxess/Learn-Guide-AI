@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import type { GuideStep, DetailLevel, SolvedQuestion, ModelName, SolutionMode, ExamQuestion, ExamAnswer, GradedAnswer, SimulationModeType, KeyConcept, Flashcard } from './types';
 import { generateStudyGuide, askFollowUpQuestion, solvePracticeQuestions, extractQuestions, generateExamQuestions, gradeExamAnswers, generateKeyConcepts, generateFlashcards, generateContentFromUrl } from './services/geminiService';
 import { FileUpload } from './components/FileUpload';
@@ -10,52 +10,48 @@ import { ExamResults } from './components/ExamResults';
 import { SimulationMode } from './components/SimulationMode';
 import { KeyConceptsDisplay } from './components/KeyConceptsDisplay';
 import { FlashcardMode } from './components/FlashcardMode';
-import { SparklesIcon, ListBulletIcon, BookOpenIcon, MagnifyingGlassIcon, DocumentArrowDownIcon, CpuChipIcon, ChatBubbleLeftRightIcon, AcademicCapIcon, UsersIcon, KeyIcon, RectangleStackIcon, XMarkIcon, LinkIcon, ArrowPathIcon } from './components/icons';
-import { useTheme, ThemeName } from './contexts/ThemeContext';
+import { PdfPreview } from './components/PdfPreview';
+import { SessionPrompt } from './components/SessionPrompt';
+import { Notification } from './components/Notification';
+import { SparklesIcon, ListBulletIcon, BookOpenIcon, MagnifyingGlassIcon, DocumentArrowDownIcon, CpuChipIcon, ChatBubbleLeftRightIcon, AcademicCapIcon, UsersIcon, KeyIcon, RectangleStackIcon, XMarkIcon, LinkIcon, ArrowPathIcon, LightBulbIcon } from './components/icons';
+import { useTheme } from './contexts/ThemeContext';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
+import { fileToBase64, base64ToFile } from './utils';
 
 // TypeScript declarations for global libraries loaded via CDN
 declare const jspdf: any;
+declare const html2canvas: any;
 
 type AppState = 'initial' | 'loading' | 'success' | 'error' | 'guided' | 'exam' | 'examResults' | 'simulation' | 'keyConcepts' | 'flashcards';
 type ScriptAction = 'guide' | 'concepts' | 'flashcards' | 'exam';
-const LOCAL_STORAGE_KEY_GUIDE = 'lernGuideAppState';
 
-interface SavedState {
-  guide: GuideStep[];
-  appState: 'success';
-  openStepIndex: number | null;
+const SESSION_STORAGE_KEY = 'lernGuideSession';
+
+interface SerializableFile {
+    name: string;
+    type: string;
+    lastModified: number;
+    data: string; // base64
 }
 
-const saveGuideToLocalStorage = (state: SavedState) => {
-  try {
-    const stateToSave = JSON.stringify(state);
-    localStorage.setItem(LOCAL_STORAGE_KEY_GUIDE, stateToSave);
-  } catch (err) {
-    console.error("Failed to save state to localStorage", err);
-  }
-};
-
-const loadGuideFromLocalStorage = (): SavedState | null => {
-  try {
-    const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY_GUIDE);
-    if (!savedStateJSON) return null;
-
-    const savedState: SavedState = JSON.parse(savedStateJSON);
-    if (savedState.guide && savedState.appState === 'success') {
-      return savedState;
-    }
-    return null;
-  } catch (err) {
-    console.error("Failed to load state from localStorage", err);
-    localStorage.removeItem(LOCAL_STORAGE_KEY_GUIDE);
-    return null;
-  }
-};
-
+interface SavedSession {
+    appState: AppState;
+    scriptFiles: SerializableFile[];
+    practiceFile: SerializableFile | null;
+    guide: GuideStep[];
+    solvedQuestions: SolvedQuestion[];
+    examResults: GradedAnswer[];
+    keyConcepts: KeyConcept[];
+    flashcards: Flashcard[];
+    openStepIndex: number | null;
+    useStrictContext: boolean;
+    detailLevel: DetailLevel;
+    model: ModelName;
+    selectedScriptAction: ScriptAction;
+}
 
 export default function App() {
-  const { theme, themeName } = useTheme();
+  const { theme } = useTheme();
   const [guide, setGuide] = useState<GuideStep[]>([]);
   const [solvedQuestions, setSolvedQuestions] = useState<SolvedQuestion[]>([]);
   const [practiceQuestions, setPracticeQuestions] = useState<string[]>([]);
@@ -80,26 +76,166 @@ export default function App() {
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [isUrlLoading, setIsUrlLoading] = useState(false);
-  const contentRef = useRef<HTMLDivElement>(null);
+  const [savedSessionData, setSavedSessionData] = useState<SavedSession | null>(null);
+  const [showSessionPrompt, setShowSessionPrompt] = useState(false);
+  const [saveNotification, setSaveNotification] = useState<string | null>(null);
 
+  // Load session from localStorage on initial app load
   useEffect(() => {
-    const savedState = loadGuideFromLocalStorage();
-    if (savedState) {
-        setGuide(savedState.guide);
-        setAppState(savedState.appState);
-        setOpenStepIndex(savedState.openStepIndex);
+    try {
+      const savedStateJSON = localStorage.getItem(SESSION_STORAGE_KEY);
+      if (savedStateJSON) {
+        const savedState: SavedSession = JSON.parse(savedStateJSON);
+        if (savedState.appState !== 'initial') {
+            setSavedSessionData(savedState);
+            setShowSessionPrompt(true);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load or parse session from localStorage", err);
+      localStorage.removeItem(SESSION_STORAGE_KEY);
     }
   }, []);
+  
+  // Save session to localStorage whenever the state changes
+  useEffect(() => {
+    const saveSession = async () => {
+        // Don't save initial or loading states to avoid overwriting a valid session on reload.
+        if (appState === 'initial' || appState === 'loading' || showSessionPrompt) return;
+
+        try {
+            const serializableScriptFiles = await Promise.all(
+                scriptFiles.map(async file => ({
+                    name: file.name,
+                    type: file.type,
+                    lastModified: file.lastModified,
+                    data: await fileToBase64(file),
+                }))
+            );
+
+            let serializablePracticeFile: SerializableFile | null = null;
+            if (practiceFile) {
+                serializablePracticeFile = {
+                    name: practiceFile.name,
+                    type: practiceFile.type,
+                    lastModified: practiceFile.lastModified,
+                    data: await fileToBase64(practiceFile),
+                };
+            }
+
+            const sessionToSave: SavedSession = {
+                appState, scriptFiles: serializableScriptFiles, practiceFile: serializablePracticeFile,
+                guide, solvedQuestions, examResults, keyConcepts, flashcards, openStepIndex,
+                useStrictContext, detailLevel, model, selectedScriptAction,
+            };
+
+            localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionToSave));
+            if (saveNotification) setSaveNotification(null); // Clear previous error if save is now successful
+
+        } catch (err) {
+            if (err instanceof DOMException && (err.name === 'QuotaExceededError' || err.code === 22)) {
+                setSaveNotification("Warnung: Ihre Sitzung ist zu groß, um sie zu speichern. Ihr Fortschritt wird bei einem Neuladen nicht wiederhergestellt.");
+            } else {
+                console.error("Failed to save session to localStorage", err);
+            }
+        }
+    };
+    saveSession();
+  }, [
+    appState, scriptFiles, practiceFile, guide, solvedQuestions, examResults, 
+    keyConcepts, flashcards, openStepIndex, useStrictContext, detailLevel, model, 
+    selectedScriptAction, showSessionPrompt
+  ]);
+
+  const handleRestoreSession = () => {
+    if (!savedSessionData) return;
+
+    try {
+      const restoredScriptFiles = savedSessionData.scriptFiles.map(f => base64ToFile(f.data, f.name, f.type));
+      const restoredPracticeFile = savedSessionData.practiceFile ? base64ToFile(savedSessionData.practiceFile.data, savedSessionData.practiceFile.name, savedSessionData.practiceFile.type) : null;
+      
+      setScriptFiles(restoredScriptFiles);
+      setPracticeFile(restoredPracticeFile);
+      setGuide(savedSessionData.guide);
+      setSolvedQuestions(savedSessionData.solvedQuestions);
+      setExamResults(savedSessionData.examResults);
+      setKeyConcepts(savedSessionData.keyConcepts);
+      setFlashcards(savedSessionData.flashcards);
+      setOpenStepIndex(savedSessionData.openStepIndex);
+      setUseStrictContext(savedSessionData.useStrictContext);
+      setDetailLevel(savedSessionData.detailLevel);
+      setModel(savedSessionData.model);
+      setSelectedScriptAction(savedSessionData.selectedScriptAction);
+      setAppState(savedSessionData.appState);
+
+    } catch (error) {
+        console.error("Error restoring session:", error);
+        alert("Die Sitzung konnte nicht vollständig wiederhergestellt werden. Es wird eine neue Sitzung gestartet.");
+        handleStartNewSession();
+    } finally {
+        setShowSessionPrompt(false);
+        setSavedSessionData(null);
+    }
+  };
+
+  const handleStartNewSession = () => {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      setShowSessionPrompt(false);
+      setSavedSessionData(null);
+      // Optional: reset state if needed, though App's default state should suffice
+      handleReset();
+  };
+
 
   useEffect(() => {
-    if (appState === 'success' && guide.length > 0) {
-      saveGuideToLocalStorage({
-        guide,
-        appState,
-        openStepIndex,
-      });
-    }
-  }, [guide, appState, openStepIndex]);
+    if (!isExportingPdf) return;
+
+    const exportPdf = async () => {
+      try {
+        if (typeof jspdf === 'undefined' || typeof html2canvas === 'undefined') {
+          throw new Error("PDF-Export-Bibliotheken (jsPDF, html2canvas) konnten nicht geladen werden.");
+        }
+        
+        const elementToPrint = document.getElementById('pdf-content');
+        if (!elementToPrint) {
+          throw new Error("PDF-Vorschau-Element konnte nicht gefunden werden.");
+        }
+
+        const { jsPDF } = jspdf;
+        const doc = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4'
+        });
+
+        const mainTitle = guide.length > 0 ? 'Dein persönlicher Lern-Guide' : 'Gelöste Übungsaufgaben';
+        const filename = `${mainTitle.toLowerCase().replace(/\s/g, '-')}.pdf`;
+        
+        await doc.html(elementToPrint, {
+          callback: (doc) => {
+            doc.save(filename);
+          },
+          x: 0,
+          y: 0,
+          width: 210, // A4 width in mm
+          windowWidth: elementToPrint.scrollWidth,
+          autoPaging: 'text'
+        });
+
+      } catch (err) {
+        console.error("PDF export failed", err);
+        setError("Der PDF-Export ist fehlgeschlagen. Bitte versuchen Sie es erneut.");
+      } finally {
+        // Cleanup in all cases
+        setIsExportingPdf(false);
+      }
+    };
+
+    // Timeout to ensure the DOM is fully updated before we try to access it
+    const timer = setTimeout(exportPdf, 100);
+
+    return () => clearTimeout(timer);
+  }, [isExportingPdf, guide, solvedQuestions]);
 
   const startLoadingProcess = (message?: string) => {
     setAppState('loading');
@@ -164,201 +300,8 @@ export default function App() {
   };
 
 
-  const handleExportToPdf = async () => {
-      if (typeof jspdf === 'undefined') {
-          setError("Die PDF-Export-Funktion konnte nicht geladen werden. Bitte laden Sie die Seite neu.");
-          return;
-      }
+  const handleExportToPdf = () => {
       setIsExportingPdf(true);
-
-      try {
-          const { jsPDF } = jspdf;
-          const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-          const FONT_SIZES = { title: 22, section: 16, sub: 12, body: 11, small: 10, h3: 14 };
-          const COLORS: Record<ThemeName, string> = { indigo: '#6366F1', sky: '#0EA5E9', rose: '#F43F5E', teal: '#14B8A6' };
-          const THEME_COLOR = COLORS[themeName];
-          const TEXT_COLOR = '#333333';
-          const LIGHT_GRAY = '#E5E7EB';
-          const MARGIN = 40;
-          const PAGE_WIDTH = doc.internal.pageSize.getWidth();
-          const MAX_TEXT_WIDTH = PAGE_WIDTH - MARGIN * 2;
-          let y = MARGIN;
-
-          const mainTitle = guide.length > 0 ? 'Dein persönlicher Lern-Guide' : 'Gelöste Übungsaufgaben';
-
-          const addHeader = (pageNum: number) => {
-              if (pageNum === 1) {
-                  doc.setFontSize(FONT_SIZES.title);
-                  doc.setFont('helvetica', 'bold');
-                  doc.setTextColor(THEME_COLOR);
-                  doc.text(mainTitle, MARGIN, y);
-                  y += FONT_SIZES.title * 1.5;
-              } else {
-                  doc.setFontSize(FONT_SIZES.small);
-                  doc.setFont('helvetica', 'normal');
-                  doc.setTextColor(TEXT_COLOR);
-                  doc.text(mainTitle, MARGIN, MARGIN / 2);
-                  doc.setDrawColor(LIGHT_GRAY);
-                  doc.line(MARGIN, MARGIN / 2 + 5, PAGE_WIDTH - MARGIN, MARGIN / 2 + 5);
-                  y = MARGIN;
-              }
-          };
-
-          const addFooter = (pageNum: number, totalPages: number) => {
-              const footerY = doc.internal.pageSize.getHeight() - MARGIN / 2;
-              doc.setFontSize(FONT_SIZES.small - 1);
-              doc.setFont('helvetica', 'normal');
-              doc.setTextColor(TEXT_COLOR);
-              const pageStr = `Seite ${pageNum} von ${totalPages}`;
-              const textWidth = doc.getStringUnitWidth(pageStr) * doc.getFontSize() / doc.internal.scaleFactor;
-              doc.text(pageStr, PAGE_WIDTH - MARGIN - textWidth, footerY);
-          };
-
-          const checkPageBreak = (neededHeight: number) => {
-              if (y + neededHeight > doc.internal.pageSize.getHeight() - MARGIN) {
-                  doc.addPage();
-                  return true;
-              }
-              return false;
-          };
-
-          const processMarkdownContent = (markdown: string) => {
-              const lines = markdown.split('\n');
-              for (const line of lines) {
-                  const trimmedLine = line.trim();
-                  if (!trimmedLine) { 
-                      y += FONT_SIZES.body / 2;
-                      continue;
-                  }
-
-                  let currentX = MARGIN;
-                  let indent = 0;
-                  let fontStyle = 'normal';
-                  let fontSize = FONT_SIZES.body;
-
-                  let lineToRender = trimmedLine;
-
-                  if (trimmedLine.startsWith('### ')) {
-                      lineToRender = trimmedLine.substring(4);
-                      fontSize = FONT_SIZES.h3;
-                      fontStyle = 'bold';
-                  } else if (trimmedLine.match(/^[-*]\s/)) {
-                      lineToRender = `\u2022 ${trimmedLine.replace(/^[-*]\s/, '')}`;
-                      indent = 15;
-                      currentX += indent;
-                  }
-
-                  const parts = lineToRender.split(/(\*\*.*?\*\*|\*.*?\*)/g).filter(Boolean);
-                  
-                  doc.setFontSize(fontSize);
-                  const splitOptions = { maxWidth: MAX_TEXT_WIDTH - indent };
-                  const textLines = doc.splitTextToSize(lineToRender.replace(/\*/g, ''), splitOptions.maxWidth);
-                  
-                  if (checkPageBreak(textLines.length * fontSize * 1.2)) {
-                    // Page break happened, header is already added
-                  }
-
-                  for (const segment of parts) {
-                      let currentStyle = fontStyle;
-                      let text = segment;
-
-                      if (segment.startsWith('**') && segment.endsWith('**')) {
-                          currentStyle = 'bold';
-                          text = segment.slice(2, -2);
-                      } else if (segment.startsWith('*') && segment.endsWith('*')) {
-                          currentStyle = 'italic';
-                          text = segment.slice(1, -1);
-                      }
-
-                      doc.setFont('helvetica', currentStyle);
-                      const segmentWidth = doc.getTextWidth(text);
-                      
-                      // Rudimentary word wrap for inline bold/italic
-                      if (currentX + segmentWidth > PAGE_WIDTH - MARGIN) {
-                          y += fontSize * 1.2;
-                          currentX = MARGIN + indent;
-                      }
-                      doc.text(text, currentX, y);
-                      currentX += segmentWidth;
-                  }
-                  y += fontSize * 1.4;
-              }
-          };
-
-          // Main rendering loop
-          addHeader(1);
-
-          if (guide.length > 0) {
-              guide.forEach((step, index) => {
-                  if (index > 0) {
-                      y += FONT_SIZES.section / 2;
-                      doc.setDrawColor(LIGHT_GRAY);
-                      doc.line(MARGIN, y, PAGE_WIDTH - MARGIN, y);
-                      y += FONT_SIZES.section;
-                  }
-                  if (checkPageBreak(FONT_SIZES.section * 2)) addHeader(doc.internal.pages.length);
-
-                  doc.setFontSize(FONT_SIZES.section);
-                  doc.setFont('helvetica', 'bold');
-                  doc.setTextColor(THEME_COLOR);
-                  doc.text(step.title, MARGIN, y);
-                  y += FONT_SIZES.section * 1.5;
-
-                  doc.setTextColor(TEXT_COLOR);
-                  processMarkdownContent(step.content);
-              });
-          } else if (solvedQuestions.length > 0) {
-              solvedQuestions.forEach((item, index) => {
-                  if (index > 0) {
-                      y += FONT_SIZES.section / 2;
-                      doc.setDrawColor(LIGHT_GRAY);
-                      doc.line(MARGIN, y, PAGE_WIDTH - MARGIN, y);
-                      y += FONT_SIZES.section;
-                  }
-                  if (checkPageBreak(FONT_SIZES.section * 2 * 3)) addHeader(doc.internal.pages.length);
-
-                  doc.setFontSize(FONT_SIZES.section);
-                  doc.setFont('helvetica', 'bold');
-                  doc.setTextColor(THEME_COLOR);
-                  doc.text(item.title, MARGIN, y);
-                  y += FONT_SIZES.section * 1.5;
-
-                  const sections = [
-                      { title: 'Antwort:', content: item.answer },
-                      { title: 'Erklärung:', content: item.explanation },
-                      { title: 'Referenz im Skript:', content: item.reference }
-                  ];
-
-                  sections.forEach(sec => {
-                      y += FONT_SIZES.sub;
-                      doc.setFontSize(FONT_SIZES.sub);
-                      doc.setFont('helvetica', 'bold');
-                      doc.setTextColor(TEXT_COLOR);
-                      doc.text(sec.title, MARGIN, y);
-                      y += FONT_SIZES.sub * 1.5;
-                      
-                      processMarkdownContent(sec.content);
-                  });
-              });
-          }
-
-          // Add footers to all pages
-          const totalPages = doc.internal.getNumberOfPages();
-          for (let i = 1; i <= totalPages; i++) {
-              doc.setPage(i);
-              // Re-add header on subsequent pages as it might be cleared
-              if (i > 1) addHeader(i);
-              addFooter(i, totalPages);
-          }
-
-          doc.save(`${mainTitle.toLowerCase().replace(/\s/g, '-')}.pdf`);
-
-      } catch (err) {
-          console.error("PDF export failed", err);
-          setError("Der PDF-Export ist fehlgeschlagen. Bitte versuchen Sie es erneut.");
-      } finally {
-          setIsExportingPdf(false);
-      }
   };
 
 
@@ -525,19 +468,19 @@ export default function App() {
     setOpenStepIndex(null);
     setAppState('initial');
     setProgress(0);
-    localStorage.removeItem(LOCAL_STORAGE_KEY_GUIDE);
   };
   
   const handleReset = () => {
     handleReturnToConfig();
     setScriptFiles([]);
     setPracticeFile(null);
+    localStorage.removeItem(SESSION_STORAGE_KEY);
   };
   
-  const detailOptions = [ { id: 'overview', label: 'Übersicht', icon: ListBulletIcon }, { id: 'standard', label: 'Standard', icon: BookOpenIcon }, { id: 'detailed', label: 'Detailliert', icon: MagnifyingGlassIcon } ];
+  const detailOptions = [ { id: 'overview', label: 'Übersicht', icon: ListBulletIcon }, { id: 'standard', label: 'Standard', icon: BookOpenIcon }, { id: 'detailed', label: 'Detailliert', icon: MagnifyingGlassIcon }, { id: 'eli5', label: 'ELI5', icon: LightBulbIcon } ];
   const solutionModeOptions = [ { id: 'direct', label: 'Direkte Lösung', icon: BookOpenIcon }, { id: 'guided', label: 'Geführte Lösung', icon: ChatBubbleLeftRightIcon } ];
   const simulationModeOptions = [ { id: 'coop', label: 'Studienpartner', icon: UsersIcon }, { id: 'vs', label: 'Herausforderer', icon: SparklesIcon } ];
-  const detailDescriptions: Record<DetailLevel, string> = { overview: 'Ideal für eine schnelle Zusammenfassung.', standard: 'Eine ausgewogene, schrittweise Erklärung.', detailed: 'Eine tiefgehende Analyse mit Beispielen.' };
+  const detailDescriptions: Record<DetailLevel, string> = { overview: 'Ideal für eine schnelle Zusammenfassung.', standard: 'Eine ausgewogene, schrittweise Erklärung.', detailed: 'Eine tiefgehende Analyse mit Beispielen.', eli5: 'Erklärung wie für ein 5-jähriges Kind, mit einfachen Analogien.' };
   const modelOptions = [ { id: 'gemini-2.5-flash', label: 'Flash' }, { id: 'gemini-2.5-pro', label: 'Pro' } ];
   const modelDescriptions: Record<ModelName, string> = { 'gemini-2.5-flash': 'Schnell und effizient, für die meisten Aufgaben geeignet.', 'gemini-2.5-pro': 'Leistungsstark, ideal für komplexe Dokumente.' };
   
@@ -587,15 +530,17 @@ export default function App() {
   };
 
   const { text: buttonText, action: buttonAction } = getButtonTextAndAction();
-
+  
   const renderContent = () => {
+    if (showSessionPrompt) {
+        return <SessionPrompt onContinue={handleRestoreSession} onNew={handleStartNewSession} />;
+    }
+
     switch (appState) {
       case 'loading': return <LoadingSpinner progress={progress} message={loadingMessage} />;
       case 'success': return (
             <>
-                <div ref={contentRef}>
-                  <GuideDisplay guide={guide} solvedQuestions={solvedQuestions} onAskFollowUp={guide.length > 0 ? handleAskFollowUp : undefined} openStepIndex={openStepIndex} onStepClick={setOpenStepIndex} />
-                </div>
+                <GuideDisplay guide={guide} solvedQuestions={solvedQuestions} onAskFollowUp={guide.length > 0 ? handleAskFollowUp : undefined} openStepIndex={openStepIndex} onStepClick={setOpenStepIndex} />
                 <div className="mt-8 text-center flex flex-col sm:flex-row gap-4 justify-center">
                     <button onClick={handleExportToPdf} disabled={isExportingPdf} className="inline-flex items-center justify-center px-6 py-2 bg-slate-600 text-white font-semibold rounded-lg shadow-md hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-opacity-75 disabled:bg-slate-400 disabled:cursor-wait">
                         {isExportingPdf ? (<><svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Exportiere...</>) : (<><DocumentArrowDownIcon className="h-5 w-5 mr-2" /> Als PDF exportieren</>)}
@@ -711,7 +656,7 @@ export default function App() {
                         <div className="animate-fade-in space-y-6" style={{animationDelay: '100ms'}}>
                             <fieldset>
                                 <legend className="text-base font-medium text-slate-900 dark:text-slate-200 mb-2">Detaillierungsgrad (nur für Lern-Guide)</legend>
-                                <div className="grid grid-cols-3 gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 p-1">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 p-1">
                                     {detailOptions.map((o) => (
                                         <div key={o.id}>
                                             <input type="radio" name="detail-level" id={o.id} value={o.id} checked={detailLevel === o.id} onChange={() => setDetailLevel(o.id as DetailLevel)} className="sr-only" />
@@ -767,6 +712,19 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans">
+      {isExportingPdf && (
+        <div 
+          style={{
+            position: 'absolute',
+            left: '-9999px',
+            top: 0,
+            width: '210mm',
+            backgroundColor: 'white',
+          }}
+        >
+          <PdfPreview guide={guide} solvedQuestions={solvedQuestions} />
+        </div>
+      )}
       <header className="py-4 px-4 sm:px-6 lg:px-8 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center justify-between max-w-6xl mx-auto">
             <div className="flex items-center">
@@ -787,7 +745,10 @@ export default function App() {
             </div>
         </div>
       </header>
-      <main className="py-10 px-4 sm:px-6 lg:px-8">{renderContent()}</main>
+      <main className="py-10 px-4 sm:px-6 lg:px-8">
+        <Notification message={saveNotification} onDismiss={() => setSaveNotification(null)} />
+        {renderContent()}
+      </main>
       <footer className="text-center py-4 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800"><p>Powered by Google Gemini</p></footer>
     </div>
   );
