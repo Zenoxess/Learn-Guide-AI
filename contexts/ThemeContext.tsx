@@ -56,6 +56,7 @@ interface ThemeContextType {
   themeName: ThemeName;
   setThemeName: (name: ThemeName) => void;
   theme: ThemeClasses;
+  isDarkMode: boolean;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -70,6 +71,8 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   });
 
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
   useEffect(() => {
     try {
       window.localStorage.setItem(THEME_KEY, themeName);
@@ -78,11 +81,22 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   }, [themeName]);
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    setIsDarkMode(mediaQuery.matches);
+
+    const handler = (e: MediaQueryListEvent) => setIsDarkMode(e.matches);
+    mediaQuery.addEventListener('change', handler);
+
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
   const value = useMemo(() => ({
     themeName,
     setThemeName,
     theme: availableThemes[themeName].classes,
-  }), [themeName]);
+    isDarkMode,
+  }), [themeName, isDarkMode]);
 
   return (
     <ThemeContext.Provider value={value}>

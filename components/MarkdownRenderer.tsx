@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -11,23 +11,13 @@ interface MarkdownRendererProps {
 }
 
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className = '' }) => {
-    const [isDarkMode, setIsDarkMode] = useState(false);
-    const { theme } = useTheme();
-
-    useEffect(() => {
-        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-        setIsDarkMode(mediaQuery.matches);
-
-        const handler = (e: MediaQueryListEvent) => setIsDarkMode(e.matches);
-        mediaQuery.addEventListener('change', handler);
-
-        return () => mediaQuery.removeEventListener('change', handler);
-    }, []);
+    const { theme, isDarkMode } = useTheme();
 
     const syntaxTheme = isDarkMode ? vscDarkPlus : materialLight;
 
     return (
-        <ReactMarkdown
+        // FIX: Moved className to a wrapping div to correctly apply prose styles and fix a type error.
+        <div
             className={`
                 prose prose-slate dark:prose-invert max-w-none 
                 prose-headings:font-semibold prose-headings:mb-3 prose-headings:mt-8
@@ -43,28 +33,39 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
                 ${theme['prose-li-marker']}
                 ${className}
             `}
-            rehypePlugins={[rehypeRaw]}
-            components={{
-                code({ node, className, children, ...props }) {
-                    const match = /language-(\w+)/.exec(className || '');
-                    return match ? (
-                        <SyntaxHighlighter
-                            style={syntaxTheme}
-                            language={match[1]}
-                            PreTag="div"
-                            {...props}
-                        >
-                            {String(children).replace(/\n$/, '')}
-                        </SyntaxHighlighter>
-                    ) : (
-                        <code className={className} {...props}>
-                            {children}
-                        </code>
-                    );
-                },
-            }}
         >
-            {content}
-        </ReactMarkdown>
+            <ReactMarkdown
+                rehypePlugins={[rehypeRaw]}
+                components={{
+                    // FIX: Destructure `ref` from props passed to SyntaxHighlighter to avoid type conflict.
+                    // react-markdown passes a ref for HTMLElement, which is not compatible with SyntaxHighlighter's component ref.
+                    code({ node, className, children, ...props }) {
+                        const match = /language-(\w+)/.exec(className || '');
+                        if (match) {
+                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                            const { ref, ...rest } = props;
+                            return (
+                                <SyntaxHighlighter
+                                    // FIX: Cast style to `any` to resolve type mismatch from react-syntax-highlighter.
+                                    style={syntaxTheme as any}
+                                    language={match[1]}
+                                    PreTag="div"
+                                    {...rest}
+                                >
+                                    {String(children).replace(/\n$/, '')}
+                                </SyntaxHighlighter>
+                            );
+                        }
+                        return (
+                            <code className={className} {...props}>
+                                {children}
+                            </code>
+                        );
+                    },
+                }}
+            >
+                {content}
+            </ReactMarkdown>
+        </div>
     );
 };

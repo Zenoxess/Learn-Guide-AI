@@ -192,7 +192,7 @@ interface ResultDisplayProps {
   onStepClick: (index: number | null) => void;
 }
 
-export const GuideDisplay: React.FC<ResultDisplayProps> = ({ guide, solvedQuestions, onAskFollowUp, openStepIndex, onStepClick }) => {
+export const GuideDisplay: React.FC<ResultDisplayProps> = React.memo(({ guide, solvedQuestions, onAskFollowUp, openStepIndex, onStepClick }) => {
   const { theme } = useTheme();
   const handleItemClick = (index: number) => {
     onStepClick(openStepIndex === index ? null : index);
@@ -230,4 +230,4 @@ export const GuideDisplay: React.FC<ResultDisplayProps> = ({ guide, solvedQuesti
         </div>
     </div>
   );
-};
+});

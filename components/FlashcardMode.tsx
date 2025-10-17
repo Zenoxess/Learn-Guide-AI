@@ -9,7 +9,7 @@ interface FlashcardModeProps {
   onExit: () => void;
 }
 
-export const FlashcardMode: React.FC<FlashcardModeProps> = ({ flashcards, onExit }) => {
+export const FlashcardMode: React.FC<FlashcardModeProps> = React.memo(({ flashcards, onExit }) => {
   const { theme } = useTheme();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -120,4 +120,4 @@ export const FlashcardMode: React.FC<FlashcardModeProps> = ({ flashcards, onExit
       )}
     </div>
   );
-};
+});

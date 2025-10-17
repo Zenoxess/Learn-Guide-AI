@@ -36,7 +36,7 @@ const ScoreDonutChart: React.FC<{ percentage: number }> = ({ percentage }) => {
 };
 
 
-export const ExamResults: React.FC<ExamResultsProps> = ({ results, onRetry, scriptFiles, model }) => {
+export const ExamResults: React.FC<ExamResultsProps> = React.memo(({ results, onRetry, scriptFiles, model }) => {
   const { theme } = useTheme();
   const [recommendations, setRecommendations] = useState<string | null>(null);
   const [isFetchingFeedback, setIsFetchingFeedback] = useState(false);
@@ -127,4 +127,4 @@ export const ExamResults: React.FC<ExamResultsProps> = ({ results, onRetry, scri
         </div>
     </div>
   );
-};
+});

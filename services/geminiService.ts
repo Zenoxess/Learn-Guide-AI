@@ -317,9 +317,7 @@ export const startTutorChat = async (scriptFiles: File[], practiceFile: File, mo
     
     const history: Content[] = [
 // FIX: Corrected the mapping of scriptParts to ensure proper content structure for chat history.
-        ...scriptParts.map(part => (
-            { role: 'user' as const, parts: [{ text: "Hier ist ein Skript, das wir als Wissensbasis verwenden werden." }, part] }
-        )),
+        ...scriptParts.map(part => ({ role: 'user' as const, parts: [{ text: "Hier ist ein Skript, das wir als Wissensbasis verwenden werden." }, part] })),
         { role: 'model' as const, parts: [{ text: "Verstanden. Ich habe die Skripte erhalten und werde sie als Teil der Wissensquelle nutzen." }] },
         { role: 'user', parts: [{ text: "Und hier sind die Übungsaufgaben, die wir bearbeiten werden." }, practicePart] },
         { role: 'model', parts: [{ text: "Perfekt, ich habe auch die Übungsaufgaben. Ich bin bereit, dich als Tutor zu unterstützen. Lass uns mit der ersten Frage beginnen, wenn du so weit bist." }] }

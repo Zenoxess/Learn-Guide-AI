@@ -1,20 +1,24 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import type { GuideStep, DetailLevel, ModelName, SolutionMode, ExamQuestion, ExamAnswer, GradedAnswer, SimulationModeType, ScriptAction, GeneratedContent, NotificationType } from './types';
 import { generateStudyGuide, askFollowUpQuestion, solvePracticeQuestions, extractQuestions, generateExamQuestions, gradeExamAnswers, generateKeyConcepts, generateFlashcards, generateContentFromUrl } from './services/geminiService';
 import { LoadingSpinner } from './components/LoadingSpinner';
-import { GuidedSolution } from './components/GuidedSolution';
-import { ExamMode } from './components/ExamMode';
 import { PdfPreview } from './components/PdfPreview';
 import { SessionPrompt } from './components/SessionPrompt';
 import { Notification } from './components/Notification';
-import { SetupWizard } from './components/SetupWizard';
-import { ResultsDashboard } from './components/ResultsDashboard';
 import { Button } from './components/Button';
 import { SparklesIcon, DocumentArrowDownIcon, ArrowPathIcon } from './components/icons';
 import { useTheme } from './contexts/ThemeContext';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import { fileToBase64, base64ToFile } from './utils';
-import { SimulationMode } from './components/SimulationMode';
+
+// Lazy-loaded components
+// FIX: Updated lazy imports to correctly handle named exports. React.lazy expects a module with a default export.
+const ResultsDashboard = lazy(() => import('./components/ResultsDashboard').then(module => ({ default: module.ResultsDashboard })));
+const SetupWizard = lazy(() => import('./components/SetupWizard').then(module => ({ default: module.SetupWizard })));
+const GuidedSolution = lazy(() => import('./components/GuidedSolution').then(module => ({ default: module.GuidedSolution })));
+const SimulationMode = lazy(() => import('./components/SimulationMode').then(module => ({ default: module.SimulationMode })));
+const ExamMode = lazy(() => import('./components/ExamMode').then(module => ({ default: module.ExamMode })));
+
 
 // TypeScript declarations for global libraries loaded via CDN
 declare const jspdf: any;
@@ -139,7 +143,32 @@ export default function App() {
     detailLevel, model, selectedScriptAction, showSessionPrompt
   ]);
 
-  const handleRestoreSession = () => {
+  const handleReturnToConfig = useCallback(() => {
+    setGeneratedContent({});
+    setPracticeQuestions([]);
+    setExamQuestions([]);
+    setError(null);
+    setOpenStepIndex(null);
+    setAppState('initial');
+    setProgress(0);
+  }, []);
+
+  const handleReset = useCallback(() => {
+    handleReturnToConfig();
+    setScriptFiles([]);
+    setPracticeFile(null);
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+  }, [handleReturnToConfig]);
+
+  const handleStartNewSession = useCallback(() => {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      setShowSessionPrompt(false);
+      setSavedSessionData(null);
+      // Optional: reset state if needed, though App's default state should suffice
+      handleReset();
+  }, [handleReset]);
+
+  const handleRestoreSession = useCallback(() => {
     if (!savedSessionData) return;
 
     try {
@@ -164,15 +193,7 @@ export default function App() {
         setShowSessionPrompt(false);
         setSavedSessionData(null);
     }
-  };
-
-  const handleStartNewSession = () => {
-      localStorage.removeItem(SESSION_STORAGE_KEY);
-      setShowSessionPrompt(false);
-      setSavedSessionData(null);
-      // Optional: reset state if needed, though App's default state should suffice
-      handleReset();
-  };
+  }, [savedSessionData, handleStartNewSession]);
 
 
   useEffect(() => {
@@ -261,18 +282,18 @@ export default function App() {
       setLoadingMessage(undefined);
   }
   
-  const handleAddScriptFiles = (newFiles: File[]) => {
+  const handleAddScriptFiles = useCallback((newFiles: File[]) => {
       setScriptFiles(prevFiles => {
           const uniqueNewFiles = newFiles.filter(nf => !prevFiles.some(pf => pf.name === nf.name && pf.size === nf.size && pf.lastModified === nf.lastModified));
           return [...prevFiles, ...uniqueNewFiles];
       });
-  };
+  }, []);
 
-  const handleRemoveScriptFile = (indexToRemove: number) => {
+  const handleRemoveScriptFile = useCallback((indexToRemove: number) => {
       setScriptFiles(prevFiles => prevFiles.filter((_, index) => index !== indexToRemove));
-  };
+  }, []);
 
-  const handleLoadFromUrl = async () => {
+  const handleLoadFromUrl = useCallback(async () => {
     if (!urlInput.trim()) return;
     setIsUrlLoading(true);
     setError(null);
@@ -285,66 +306,57 @@ export default function App() {
     } finally {
         setIsUrlLoading(false);
     }
-  };
+  }, [urlInput, handleAddScriptFiles]);
 
 
-  const handleExportToPdf = () => {
+  const handleExportToPdf = useCallback(() => {
       setIsExportingPdf(true);
-  };
+  }, []);
 
 
   const handleGenerateGuide = useCallback(async () => {
     if (scriptFiles.length === 0) return;
-    const interval = startLoadingProcess();
+    setError(null);
     try {
       const result = await generateStudyGuide(scriptFiles, useStrictContext, detailLevel, model);
-      finishLoadingProcess(interval, () => {
-        if (result.guide && result.guide.length > 0) {
-          setGeneratedContent(prev => ({...prev, guide: result.guide, solvedQuestions: null }));
-          setAppState('resultsDashboard');
-          setOpenStepIndex(0);
-        } else {
-          throw new Error("Die KI konnte keinen Guide für dieses Dokument erstellen.");
-        }
-      });
-    } catch (err) {
-      handleLoadingError(interval, err);
+      if (result.guide && result.guide.length > 0) {
+        setGeneratedContent(prev => ({...prev, guide: result.guide, solvedQuestions: null }));
+        setOpenStepIndex(0);
+      } else {
+        throw new Error("Die KI konnte keinen Guide für dieses Dokument erstellen.");
+      }
+    } catch (err: any) {
+        setNotification({ message: err.message || "Fehler beim Generieren des Guides.", type: 'warning' });
     }
   }, [scriptFiles, useStrictContext, detailLevel, model]);
   
   const handleGenerateKeyConcepts = useCallback(async () => {
     if (scriptFiles.length === 0) return;
-    const interval = startLoadingProcess("Schlüsselkonzepte werden extrahiert...");
+    setError(null);
     try {
         const result = await generateKeyConcepts(scriptFiles, model);
-        finishLoadingProcess(interval, () => {
-            if (result.keyConcepts && result.keyConcepts.length > 0) {
-                setGeneratedContent(prev => ({...prev, keyConcepts: result.keyConcepts }));
-                setAppState('resultsDashboard');
-            } else {
-                throw new Error("Die KI konnte keine Schlüsselkonzepte für dieses Dokument finden.");
-            }
-        });
-    } catch (err) {
-        handleLoadingError(interval, err);
+        if (result.keyConcepts && result.keyConcepts.length > 0) {
+            setGeneratedContent(prev => ({...prev, keyConcepts: result.keyConcepts }));
+        } else {
+            throw new Error("Die KI konnte keine Schlüsselkonzepte für dieses Dokument finden.");
+        }
+    } catch (err: any) {
+        setNotification({ message: err.message || "Fehler beim Extrahieren der Konzepte.", type: 'warning' });
     }
   }, [scriptFiles, model]);
 
   const handleGenerateFlashcards = useCallback(async () => {
     if (scriptFiles.length === 0) return;
-    const interval = startLoadingProcess("Lernkarten werden erstellt...");
+    setError(null);
     try {
         const result = await generateFlashcards(scriptFiles, model);
-        finishLoadingProcess(interval, () => {
-            if (result.flashcards && result.flashcards.length > 0) {
-                setGeneratedContent(prev => ({...prev, flashcards: result.flashcards }));
-                setAppState('resultsDashboard');
-            } else {
-                throw new Error("Die KI konnte keine Lernkarten für dieses Dokument erstellen.");
-            }
-        });
-    } catch (err) {
-        handleLoadingError(interval, err);
+        if (result.flashcards && result.flashcards.length > 0) {
+            setGeneratedContent(prev => ({...prev, flashcards: result.flashcards }));
+        } else {
+            throw new Error("Die KI konnte keine Lernkarten für dieses Dokument erstellen.");
+        }
+    } catch (err: any) {
+        setNotification({ message: err.message || "Fehler beim Erstellen der Lernkarten.", type: 'warning' });
     }
   }, [scriptFiles, model]);
 
@@ -444,45 +456,61 @@ export default function App() {
     }
   }, [generatedContent.guide]);
   
-  const handleReturnToConfig = () => {
-    setGeneratedContent({});
-    setPracticeQuestions([]);
-    setExamQuestions([]);
-    setError(null);
-    setOpenStepIndex(null);
-    setAppState('initial');
-    setProgress(0);
-  };
-  
-  const handleReset = () => {
-    handleReturnToConfig();
-    setScriptFiles([]);
-    setPracticeFile(null);
-    localStorage.removeItem(SESSION_STORAGE_KEY);
-  };
-
-  const handleStartGeneration = () => {
+  const handleStartGeneration = useCallback(() => {
     if (!selectedScriptAction) {
         setError("Bitte wählen Sie eine Aktion aus.");
         return;
     }
-    switch (selectedScriptAction) {
-        case 'guide':
-            handleGenerateGuide();
-            break;
-        case 'concepts':
-            handleGenerateKeyConcepts();
-            break;
-        case 'flashcards':
-            handleGenerateFlashcards();
-            break;
-        case 'exam':
-            handleStartExam();
-            break;
-        default:
-            console.error("Unbekannte Aktion ausgewählt");
+    
+    const interval = startLoadingProcess("Inhalte werden generiert...");
+
+    const performAction = async () => {
+        try {
+            switch (selectedScriptAction) {
+                case 'guide':
+                    await handleGenerateGuide();
+                    break;
+                case 'concepts':
+                    await handleGenerateKeyConcepts();
+                    break;
+                case 'flashcards':
+                    await handleGenerateFlashcards();
+                    break;
+                case 'exam':
+                    // This one handles its own loading, so we just call it.
+                    // But for consistency let's adapt it.
+                    await handleStartExam();
+                    return; // handleStartExam manages its own loading states
+            }
+            finishLoadingProcess(interval, () => setAppState('resultsDashboard'));
+        } catch (err) {
+            handleLoadingError(interval, err);
+        }
+    };
+    
+    if (selectedScriptAction === 'exam') {
+        clearInterval(interval); // Exam handles its own full-page loading
+        handleStartExam();
+    } else {
+        const initialAction = {
+            'guide': handleGenerateGuide,
+            'concepts': handleGenerateKeyConcepts,
+            'flashcards': handleGenerateFlashcards,
+        }[selectedScriptAction];
+        
+        // This is a bit of a workaround because the new local loading logic
+        // is now preferred inside the dashboard.
+        // For the first generation, we still use the global loader.
+        const interval = startLoadingProcess();
+        initialAction().then(() => {
+            finishLoadingProcess(interval, () => {
+                setAppState('resultsDashboard');
+            });
+        }).catch((err) => {
+            handleLoadingError(interval, err);
+        });
     }
-  };
+  }, [selectedScriptAction, handleGenerateGuide, handleGenerateKeyConcepts, handleGenerateFlashcards, handleStartExam]);
   
   const renderContent = () => {
     if (showSessionPrompt) {
@@ -614,7 +642,9 @@ export default function App() {
           type={notification?.type ?? 'warning'} 
           onDismiss={() => setNotification(null)} 
         />
-        {renderContent()}
+        <Suspense fallback={<LoadingSpinner progress={50} message="Komponente wird geladen..." />}>
+          {renderContent()}
+        </Suspense>
       </main>
       <footer className="text-center py-4 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800"><p>Powered by Google Gemini</p></footer>
     </div>

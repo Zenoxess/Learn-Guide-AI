@@ -40,7 +40,7 @@ interface SetupWizardProps {
   handleStartGuidedOrSimulation: () => void;
 }
 
-export const SetupWizard: React.FC<SetupWizardProps> = (props) => {
+export const SetupWizard: React.FC<SetupWizardProps> = React.memo((props) => {
   const { theme } = useTheme();
   const [step, setStep] = useState(1);
   const [path, setPath] = useState<'learn' | 'practice' | null>(null);
@@ -253,4 +253,4 @@ export const SetupWizard: React.FC<SetupWizardProps> = (props) => {
         </div>
     </div>
   );
-};
+});
