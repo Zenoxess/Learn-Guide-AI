@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { GuideStep, DetailLevel, SolvedQuestion, ModelName, SolutionMode, ExamQuestion, ExamAnswer, GradedAnswer, SimulationModeType, KeyConcept, Flashcard } from './types';
-import { generateStudyGuide, askFollowUpQuestion, solvePracticeQuestions, extractQuestions, generateExamQuestions, gradeExamAnswers, generateKeyConcepts, generateFlashcards } from './services/geminiService';
+import { generateStudyGuide, askFollowUpQuestion, solvePracticeQuestions, extractQuestions, generateExamQuestions, gradeExamAnswers, generateKeyConcepts, generateFlashcards, generateContentFromUrl } from './services/geminiService';
 import { FileUpload } from './components/FileUpload';
 import { GuideDisplay } from './components/GuideDisplay';
 import { LoadingSpinner } from './components/LoadingSpinner';
@@ -10,8 +10,8 @@ import { ExamResults } from './components/ExamResults';
 import { SimulationMode } from './components/SimulationMode';
 import { KeyConceptsDisplay } from './components/KeyConceptsDisplay';
 import { FlashcardMode } from './components/FlashcardMode';
-import { SparklesIcon, ListBulletIcon, BookOpenIcon, MagnifyingGlassIcon, DocumentArrowDownIcon, CpuChipIcon, ChatBubbleLeftRightIcon, AcademicCapIcon, UsersIcon, KeyIcon, RectangleStackIcon, XMarkIcon } from './components/icons';
-import { useTheme } from './contexts/ThemeContext';
+import { SparklesIcon, ListBulletIcon, BookOpenIcon, MagnifyingGlassIcon, DocumentArrowDownIcon, CpuChipIcon, ChatBubbleLeftRightIcon, AcademicCapIcon, UsersIcon, KeyIcon, RectangleStackIcon, XMarkIcon, LinkIcon, ArrowPathIcon } from './components/icons';
+import { useTheme, ThemeName } from './contexts/ThemeContext';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 
 // TypeScript declarations for global libraries loaded via CDN
@@ -55,7 +55,7 @@ const loadGuideFromLocalStorage = (): SavedState | null => {
 
 
 export default function App() {
-  const { theme } = useTheme();
+  const { theme, themeName } = useTheme();
   const [guide, setGuide] = useState<GuideStep[]>([]);
   const [solvedQuestions, setSolvedQuestions] = useState<SolvedQuestion[]>([]);
   const [practiceQuestions, setPracticeQuestions] = useState<string[]>([]);
@@ -78,6 +78,8 @@ export default function App() {
   const [simulationMode, setSimulationMode] = useState<SimulationModeType>('coop');
   const [selectedScriptAction, setSelectedScriptAction] = useState<ScriptAction>('guide');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+  const [isUrlLoading, setIsUrlLoading] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -146,6 +148,22 @@ export default function App() {
       setScriptFiles(prevFiles => prevFiles.filter((_, index) => index !== indexToRemove));
   };
 
+  const handleLoadFromUrl = async () => {
+    if (!urlInput.trim()) return;
+    setIsUrlLoading(true);
+    setError(null);
+    try {
+        const fileFromUrl = await generateContentFromUrl(urlInput);
+        handleAddScriptFiles([fileFromUrl]);
+        setUrlInput(''); // Clear input on success
+    } catch (err: any) {
+        setError(err.message || 'Die URL konnte nicht verarbeitet werden.');
+    } finally {
+        setIsUrlLoading(false);
+    }
+  };
+
+
   const handleExportToPdf = async () => {
       if (typeof jspdf === 'undefined') {
           setError("Die PDF-Export-Funktion konnte nicht geladen werden. Bitte laden Sie die Seite neu.");
@@ -155,81 +173,186 @@ export default function App() {
 
       try {
           const { jsPDF } = jspdf;
-          const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
-          const MARGIN = 15;
+          const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+          const FONT_SIZES = { title: 22, section: 16, sub: 12, body: 11, small: 10, h3: 14 };
+          const COLORS: Record<ThemeName, string> = { indigo: '#6366F1', sky: '#0EA5E9', rose: '#F43F5E', teal: '#14B8A6' };
+          const THEME_COLOR = COLORS[themeName];
+          const TEXT_COLOR = '#333333';
+          const LIGHT_GRAY = '#E5E7EB';
+          const MARGIN = 40;
           const PAGE_WIDTH = doc.internal.pageSize.getWidth();
-          const PAGE_HEIGHT = doc.internal.pageSize.getHeight();
-          const TEXT_WIDTH = PAGE_WIDTH - MARGIN * 2;
+          const MAX_TEXT_WIDTH = PAGE_WIDTH - MARGIN * 2;
           let y = MARGIN;
 
-          const addTextWithBreaks = (text: string, options: { fontSize?: number, style?: 'normal' | 'bold' | 'italic', indent?: number } = {}) => {
-              const { fontSize = 10, style = 'normal', indent = 0 } = options;
-              doc.setFontSize(fontSize);
-              doc.setFont('helvetica', style);
+          const mainTitle = guide.length > 0 ? 'Dein persönlicher Lern-Guide' : 'Gelöste Übungsaufgaben';
 
-              const lines = doc.splitTextToSize(text, TEXT_WIDTH - indent);
-              const textHeight = lines.length * (fontSize * 0.35); // Approximation of line height
-
-              if (y + textHeight > PAGE_HEIGHT - MARGIN) {
-                  doc.addPage();
+          const addHeader = (pageNum: number) => {
+              if (pageNum === 1) {
+                  doc.setFontSize(FONT_SIZES.title);
+                  doc.setFont('helvetica', 'bold');
+                  doc.setTextColor(THEME_COLOR);
+                  doc.text(mainTitle, MARGIN, y);
+                  y += FONT_SIZES.title * 1.5;
+              } else {
+                  doc.setFontSize(FONT_SIZES.small);
+                  doc.setFont('helvetica', 'normal');
+                  doc.setTextColor(TEXT_COLOR);
+                  doc.text(mainTitle, MARGIN, MARGIN / 2);
+                  doc.setDrawColor(LIGHT_GRAY);
+                  doc.line(MARGIN, MARGIN / 2 + 5, PAGE_WIDTH - MARGIN, MARGIN / 2 + 5);
                   y = MARGIN;
               }
-
-              doc.text(lines, MARGIN + indent, y);
-              y += textHeight + 2; // Add a small gap after the text
           };
-          
-          const processMarkdownContent = (content: string) => {
-              const contentLines = content.split('\n');
-              contentLines.forEach(line => {
-                  let isList = false;
-                  let contentLine = line;
-                  if (line.match(/^\s*[-*]\s/)) {
-                      isList = true;
-                      contentLine = `\u2022 ${line.replace(/^\s*[-*]\s/, '')}`;
+
+          const addFooter = (pageNum: number, totalPages: number) => {
+              const footerY = doc.internal.pageSize.getHeight() - MARGIN / 2;
+              doc.setFontSize(FONT_SIZES.small - 1);
+              doc.setFont('helvetica', 'normal');
+              doc.setTextColor(TEXT_COLOR);
+              const pageStr = `Seite ${pageNum} von ${totalPages}`;
+              const textWidth = doc.getStringUnitWidth(pageStr) * doc.getFontSize() / doc.internal.scaleFactor;
+              doc.text(pageStr, PAGE_WIDTH - MARGIN - textWidth, footerY);
+          };
+
+          const checkPageBreak = (neededHeight: number) => {
+              if (y + neededHeight > doc.internal.pageSize.getHeight() - MARGIN) {
+                  doc.addPage();
+                  return true;
+              }
+              return false;
+          };
+
+          const processMarkdownContent = (markdown: string) => {
+              const lines = markdown.split('\n');
+              for (const line of lines) {
+                  const trimmedLine = line.trim();
+                  if (!trimmedLine) { 
+                      y += FONT_SIZES.body / 2;
+                      continue;
                   }
+
+                  let currentX = MARGIN;
+                  let indent = 0;
+                  let fontStyle = 'normal';
+                  let fontSize = FONT_SIZES.body;
+
+                  let lineToRender = trimmedLine;
+
+                  if (trimmedLine.startsWith('### ')) {
+                      lineToRender = trimmedLine.substring(4);
+                      fontSize = FONT_SIZES.h3;
+                      fontStyle = 'bold';
+                  } else if (trimmedLine.match(/^[-*]\s/)) {
+                      lineToRender = `\u2022 ${trimmedLine.replace(/^[-*]\s/, '')}`;
+                      indent = 15;
+                      currentX += indent;
+                  }
+
+                  const parts = lineToRender.split(/(\*\*.*?\*\*|\*.*?\*)/g).filter(Boolean);
                   
-                  // Clean up bold/italic markers for text output
-                  contentLine = contentLine.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
-
-                  if (contentLine.trim()) {
-                      addTextWithBreaks(contentLine, { indent: isList ? 5 : 0 });
+                  doc.setFontSize(fontSize);
+                  const splitOptions = { maxWidth: MAX_TEXT_WIDTH - indent };
+                  const textLines = doc.splitTextToSize(lineToRender.replace(/\*/g, ''), splitOptions.maxWidth);
+                  
+                  if (checkPageBreak(textLines.length * fontSize * 1.2)) {
+                    // Page break happened, header is already added
                   }
-              });
+
+                  for (const segment of parts) {
+                      let currentStyle = fontStyle;
+                      let text = segment;
+
+                      if (segment.startsWith('**') && segment.endsWith('**')) {
+                          currentStyle = 'bold';
+                          text = segment.slice(2, -2);
+                      } else if (segment.startsWith('*') && segment.endsWith('*')) {
+                          currentStyle = 'italic';
+                          text = segment.slice(1, -1);
+                      }
+
+                      doc.setFont('helvetica', currentStyle);
+                      const segmentWidth = doc.getTextWidth(text);
+                      
+                      // Rudimentary word wrap for inline bold/italic
+                      if (currentX + segmentWidth > PAGE_WIDTH - MARGIN) {
+                          y += fontSize * 1.2;
+                          currentX = MARGIN + indent;
+                      }
+                      doc.text(text, currentX, y);
+                      currentX += segmentWidth;
+                  }
+                  y += fontSize * 1.4;
+              }
           };
+
+          // Main rendering loop
+          addHeader(1);
 
           if (guide.length > 0) {
-              addTextWithBreaks('Dein persönlicher Lern-Guide', { fontSize: 22, style: 'bold' });
-              y += 5;
-              guide.forEach(step => {
-                  addTextWithBreaks(step.title, { fontSize: 16, style: 'bold' });
+              guide.forEach((step, index) => {
+                  if (index > 0) {
+                      y += FONT_SIZES.section / 2;
+                      doc.setDrawColor(LIGHT_GRAY);
+                      doc.line(MARGIN, y, PAGE_WIDTH - MARGIN, y);
+                      y += FONT_SIZES.section;
+                  }
+                  if (checkPageBreak(FONT_SIZES.section * 2)) addHeader(doc.internal.pages.length);
+
+                  doc.setFontSize(FONT_SIZES.section);
+                  doc.setFont('helvetica', 'bold');
+                  doc.setTextColor(THEME_COLOR);
+                  doc.text(step.title, MARGIN, y);
+                  y += FONT_SIZES.section * 1.5;
+
+                  doc.setTextColor(TEXT_COLOR);
                   processMarkdownContent(step.content);
-                  y += 8; // Extra space between sections
               });
           } else if (solvedQuestions.length > 0) {
-              addTextWithBreaks('Gelöste Übungsaufgaben', { fontSize: 22, style: 'bold' });
-              y += 5;
-              solvedQuestions.forEach(item => {
-                  addTextWithBreaks(item.title, { fontSize: 16, style: 'bold' });
+              solvedQuestions.forEach((item, index) => {
+                  if (index > 0) {
+                      y += FONT_SIZES.section / 2;
+                      doc.setDrawColor(LIGHT_GRAY);
+                      doc.line(MARGIN, y, PAGE_WIDTH - MARGIN, y);
+                      y += FONT_SIZES.section;
+                  }
+                  if (checkPageBreak(FONT_SIZES.section * 2 * 3)) addHeader(doc.internal.pages.length);
 
-                  addTextWithBreaks('Antwort:', { fontSize: 12, style: 'bold' });
-                  processMarkdownContent(item.answer);
-                  y += 4;
-                  
-                  addTextWithBreaks('Erklärung:', { fontSize: 12, style: 'bold' });
-                  processMarkdownContent(item.explanation);
-                  y += 4;
+                  doc.setFontSize(FONT_SIZES.section);
+                  doc.setFont('helvetica', 'bold');
+                  doc.setTextColor(THEME_COLOR);
+                  doc.text(item.title, MARGIN, y);
+                  y += FONT_SIZES.section * 1.5;
 
-                  addTextWithBreaks('Referenz im Skript:', { fontSize: 12, style: 'bold' });
-                   addTextWithBreaks(item.reference.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1'), { style: 'italic' });
+                  const sections = [
+                      { title: 'Antwort:', content: item.answer },
+                      { title: 'Erklärung:', content: item.explanation },
+                      { title: 'Referenz im Skript:', content: item.reference }
+                  ];
 
-                  y += 8; // Extra space between sections
+                  sections.forEach(sec => {
+                      y += FONT_SIZES.sub;
+                      doc.setFontSize(FONT_SIZES.sub);
+                      doc.setFont('helvetica', 'bold');
+                      doc.setTextColor(TEXT_COLOR);
+                      doc.text(sec.title, MARGIN, y);
+                      y += FONT_SIZES.sub * 1.5;
+                      
+                      processMarkdownContent(sec.content);
+                  });
               });
           }
-          
-          const filename = guide.length > 0 ? 'lern-guide.pdf' : 'geloeste-uebungsaufgaben.pdf';
-          doc.save(filename);
+
+          // Add footers to all pages
+          const totalPages = doc.internal.getNumberOfPages();
+          for (let i = 1; i <= totalPages; i++) {
+              doc.setPage(i);
+              // Re-add header on subsequent pages as it might be cleared
+              if (i > 1) addHeader(i);
+              addFooter(i, totalPages);
+          }
+
+          doc.save(`${mainTitle.toLowerCase().replace(/\s/g, '-')}.pdf`);
+
       } catch (err) {
           console.error("PDF export failed", err);
           setError("Der PDF-Export ist fehlgeschlagen. Bitte versuchen Sie es erneut.");
@@ -237,6 +360,7 @@ export default function App() {
           setIsExportingPdf(false);
       }
   };
+
 
   const handleGenerateGuide = useCallback(async () => {
     if (scriptFiles.length === 0) return;
@@ -483,7 +607,7 @@ export default function App() {
       case 'guided': return <GuidedSolution scriptFiles={scriptFiles} practiceFile={practiceFile!} questions={practiceQuestions} model={model} onExit={handleReturnToConfig} />;
       case 'simulation': return <SimulationMode scriptFiles={scriptFiles} practiceFile={practiceFile!} questions={practiceQuestions} model={model} mode={simulationMode} onExit={handleReturnToConfig} />;
       case 'exam': return <ExamMode questions={examQuestions} onSubmit={handleGradeExam} onExit={handleReturnToConfig} />;
-      case 'examResults': return <ExamResults results={examResults} onRetry={handleReset} />;
+      case 'examResults': return <ExamResults results={examResults} onRetry={handleReset} scriptFiles={scriptFiles} model={model} />;
       case 'keyConcepts': return <KeyConceptsDisplay concepts={keyConcepts} onReturn={handleReset} />;
       case 'flashcards': return <FlashcardMode flashcards={flashcards} onExit={handleReset} />;
       case 'error': return (
@@ -499,11 +623,54 @@ export default function App() {
           <div className="text-center max-w-2xl mx-auto">
             <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">Verwandle Dokumente in interaktive Lernpfade</h2>
             <p className="mt-4 text-lg text-slate-600 dark:text-slate-300">Lade ein oder mehrere Skripte hoch, um einen Lern-Guide zu erhalten, oder füge Übungsaufgaben hinzu, um diese lösen zu lassen.</p>
-            <div className="mt-8">
+            <div className="mt-8 space-y-6">
               <FileUpload onFilesAdd={handleAddScriptFiles} isLoading={false} label="1. Skript(e) / Vorlesungsfolien hochladen" />
+              
+              <div className="flex items-center text-slate-500 dark:text-slate-400">
+                  <div className="flex-grow border-t border-slate-300 dark:border-slate-700"></div>
+                  <span className="flex-shrink mx-4 text-sm font-semibold">ODER</span>
+                  <div className="flex-grow border-t border-slate-300 dark:border-slate-700"></div>
+              </div>
+
+              <div>
+                  <label htmlFor="url-input" className="block text-sm font-medium text-left text-slate-700 dark:text-slate-300 mb-2">
+                      Inhalt von URL laden
+                  </label>
+                  <div className="flex gap-2">
+                      <div className="relative flex-grow">
+                          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                              <LinkIcon className="h-5 w-5 text-slate-400" aria-hidden="true" />
+                          </div>
+                          <input 
+                              id="url-input"
+                              type="url"
+                              value={urlInput}
+                              onChange={(e) => setUrlInput(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') handleLoadFromUrl(); }}
+                              disabled={isUrlLoading}
+                              placeholder="https://beispiel.de/mein-skript.html"
+                              className={`w-full rounded-md border-0 py-2 pl-10 text-slate-900 dark:text-slate-200 bg-white dark:bg-slate-800/50 ring-1 ring-inset ring-slate-300 dark:ring-slate-700 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-inset ${theme['focus:ring-primary-600']}`}
+                          />
+                      </div>
+                      <button 
+                          onClick={handleLoadFromUrl}
+                          disabled={!urlInput.trim() || isUrlLoading}
+                          className={`inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white rounded-md shadow-sm transition-colors ${theme['bg-primary-600']} ${theme['hover:bg-primary-700']} focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${theme['focus-visible:outline-primary-600']} disabled:bg-slate-400 dark:disabled:bg-slate-600 disabled:cursor-not-allowed`}
+                      >
+                           {isUrlLoading ? (
+                                <>
+                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    Lädt...
+                                </>
+                            ) : "Laden"}
+                      </button>
+                  </div>
+                   {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400 text-left">{error}</p>}
+              </div>
+
               {scriptFiles.length > 0 && (
                 <div className="mt-4 text-left">
-                  <h4 className="font-semibold text-slate-700 dark:text-slate-300">Hochgeladene Skripte:</h4>
+                  <h4 className="font-semibold text-slate-700 dark:text-slate-300">Hochgeladene Lern-Grundlagen:</h4>
                   <ul className="mt-2 space-y-2">
                     {scriptFiles.map((file, index) => (
                       <li key={`${file.name}-${index}`} className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 p-2 rounded-md text-sm">
@@ -606,7 +773,18 @@ export default function App() {
               <SparklesIcon className={`h-8 w-8 ${theme['text-primary-500']}`} />
               <h1 className={`ml-3 text-2xl font-bold ${theme['text-primary-500']}`}>Lern-Guide AI</h1>
             </div>
-            <ThemeSwitcher />
+            <div className="flex items-center space-x-4">
+               {appState !== 'initial' && (
+                <button
+                    onClick={handleReset}
+                    className="p-2 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+                    aria-label="Sitzung zurücksetzen"
+                >
+                    <ArrowPathIcon className="h-5 w-5" />
+                </button>
+                )}
+              <ThemeSwitcher />
+            </div>
         </div>
       </header>
       <main className="py-10 px-4 sm:px-6 lg:px-8">{renderContent()}</main>

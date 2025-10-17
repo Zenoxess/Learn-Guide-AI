@@ -27,6 +27,37 @@ const filesToGenerativeParts = (files: File[]): Promise<Part[]> => {
     );
 };
 
+/**
+ * Simuliert das Abrufen von Webinhalten von einer URL.
+ * WICHTIGER HINWEIS: Direkte clientseitige Anfragen an externe URLs stoßen in der Regel
+ * auf CORS-Fehler (Cross-Origin Resource Sharing), da Browser aus Sicherheitsgründen
+ * solche Anfragen blockieren.
+ *
+ * Für eine echte Implementierung wäre eine serverseitige Komponente (z.B. eine Cloud-Funktion,
+ * ein Next.js API-Endpunkt oder ein dedizierter CORS-Proxy) erforderlich. Diese Komponente würde
+ * die URL serverseitig abrufen und den Inhalt an das Frontend weiterleiten.
+ *
+ * Diese Funktion simuliert diesen Prozess, indem sie eine virtuelle Datei erstellt,
+ * die einen Verweis auf die URL enthält, damit die UI und die KI-Funktionen
+ * damit arbeiten können.
+ * @param url Die URL, von der der Inhalt geladen werden soll.
+ * @returns Ein Promise, das zu einem simulierten File-Objekt aufgelöst wird.
+ */
+export const generateContentFromUrl = async (url: string): Promise<File> => {
+  // Simulierter Inhalt für die KI und zur Anzeige
+  const content = `# Web-Inhalt
+
+Dieser Inhalt wurde von der folgenden URL geladen: ${url}
+
+**Hinweis für die KI:** Bitte behandle diesen Text so, als wäre er der Hauptinhalt der Webseite unter der angegebenen URL. In einer realen Anwendung würde hier der vollständige HTML- oder Textinhalt der Seite stehen.
+`;
+
+  const blob = new Blob([content], { type: 'text/plain' });
+  const file = new File([blob], 'web-inhalt.txt', { type: 'text/plain' });
+
+  return Promise.resolve(file);
+};
+
 
 export const generateStudyGuide = async (files: File[], useStrictContext: boolean, detailLevel: DetailLevel, model: ModelName): Promise<GuideResponse> => {
   if (!process.env.API_KEY) {
@@ -44,6 +75,7 @@ export const generateStudyGuide = async (files: File[], useStrictContext: boolea
     2. Hilfreiche Tipps und Tricks geben.
     3. Mögliche Lösungswege oder Denkansätze aufzeigen, insbesondere bei Übungsaufgaben.
     4. Auf potenzielle Fallstricke oder häufige Fehler hinweisen, die bei dem Thema auftreten können.
+    5. Generiere 2-3 relevante Folgefragen, die das Verständnis des Inhalts vertiefen und zum Nachdenken anregen. Diese Fragen sollten im Feld 'suggestedFollowUps' als Array von Strings zurückgegeben werden.
 
     Strukturiere deine Antwort als JSON-Objekt, das dem bereitgestellten Schema entspricht. Der Inhalt sollte auf Deutsch sein. Verwende Markdown-Formatierungen (z.B. Aufzählungszeichen mit '-', Fettdruck mit '**text**', Überschriften mit '##'), um die Lesbarkeit zu verbessern.
   `;
@@ -99,6 +131,13 @@ export const generateStudyGuide = async (files: File[], useStrictContext: boolea
                 content: {
                   type: Type.STRING,
                   description: "Eine detaillierte Erklärung für den Schritt, einschließlich Tipps, Tricks und Lösungsstrategien. Verwende Markdown für die Formatierung."
+                },
+                suggestedFollowUps: {
+                  type: Type.ARRAY,
+                  description: "Eine Liste von 2-3 vorgeschlagenen Folgefragen, die das Verständnis vertiefen.",
+                  items: {
+                    type: Type.STRING
+                  }
                 }
               },
               required: ["title", "content"]
@@ -662,4 +701,47 @@ export const judgeAnswers = async (scriptFiles: File[], questionText: string, us
         console.error("Failed to parse judgment response:", jsonText, e);
         throw new Error("Die Bewertung der Antworten ist fehlgeschlagen.");
     }
+};
+
+export const getPersonalizedRecommendations = async (scriptFiles: File[], incorrectAnswers: GradedAnswer[], model: ModelName): Promise<string> => {
+    if (!process.env.API_KEY) {
+        throw new Error("API_KEY environment variable is not set");
+    }
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const scriptParts = await filesToGenerativeParts(scriptFiles);
+
+    const prompt = `
+        Du bist ein erfahrener und einfühlsamer Tutor. Deine Aufgabe ist es, einem Studenten personalisiertes Feedback zu geben, basierend auf seinen falschen Antworten in einer Prüfung und den originalen Lernmaterialien (Skripte).
+
+        Hier sind die Fragen, die der Student falsch beantwortet hat, zusammen mit seinen Antworten und den korrekten Musterlösungen:
+        ${JSON.stringify(incorrectAnswers, null, 2)}
+
+        Deine Aufgabe:
+        1. Analysiere die falschen Antworten. Identifiziere gemeinsame Themen, Wissenslücken oder wiederkehrende Missverständnisse.
+        2. Formuliere eine kurze, ermutigende und konstruktive Zusammenfassung (2-4 Sätze).
+        3. Gib basierend auf deiner Analyse 2-3 konkrete Empfehlungen, welche Themen oder Kapitel aus den Skripten der Student wiederholen sollte. Sei so spezifisch wie möglich und beziehe dich auf Inhalte, die wahrscheinlich in den Skripten zu finden sind.
+        4. Strukturiere deine Antwort als Markdown. Verwende Überschriften (z.B. '### Deine Lern-Empfehlungen') und Listen.
+        
+        BEISPIEL-ANTWORT:
+        "Gut gemacht, dass du die Prüfung abgeschlossen hast! Es scheint, als hättest du die Grundlagen verstanden, aber bei der Anwendung von Formel X und bei den Details zur Kanalcodierung gibt es noch Unsicherheiten. Das ist völlig normal und lässt sich gut beheben!
+
+        ### Deine Lern-Empfehlungen
+        - **Thema 'Nachrichtenkanal' wiederholen:** Konzentriere dich besonders auf die Abschnitte zur Kanalcodierung und Modulation. Schau dir die Beispiele auf den Folien 5-7 noch einmal genau an.
+        - **Formel X üben:** Gehe die Herleitung der Formel im Skript auf Seite 12 durch und rechne die Beispielaufgabe dazu noch einmal selbst.
+        - **Unterschied zwischen A und B:** Lies dir den Abschnitt durch, der die beiden Konzepte vergleicht, um die feinen Unterschiede besser zu verstehen."
+
+        Gib nur die Markdown-formatierte Empfehlung zurück.
+    `;
+
+    const contents: Content[] = [
+        ...scriptParts.map(part => ({ parts: [{ text: "Hier ist ein Skript, das als Wissensbasis dient:" }, part] })),
+        { parts: [{ text: prompt }] }
+    ];
+
+    const response = await ai.models.generateContent({
+        model: model,
+        contents: contents,
+    });
+
+    return response.text;
 };

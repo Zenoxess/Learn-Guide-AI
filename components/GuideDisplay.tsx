@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import type { GuideStep, SolvedQuestion } from '../types';
-import { ChevronDownIcon, SendIcon } from './icons';
+import { ChevronDownIcon, SendIcon, SparklesIcon } from './icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { InlineSpinner } from './InlineSpinner';
 
 const GuideAccordionItem: React.FC<{ step: GuideStep; isOpen: boolean; onClick: () => void; onAskFollowUp: (question: string) => Promise<void>; }> = ({ step, isOpen, onClick, onAskFollowUp }) => {
   const { theme } = useTheme();
@@ -10,21 +11,31 @@ const GuideAccordionItem: React.FC<{ step: GuideStep; isOpen: boolean; onClick: 
   const [isAsking, setIsAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleAsk = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!question.trim() || isAsking) return;
+  const executeAsk = async (questionToAsk: string) => {
+    if (!questionToAsk.trim() || isAsking) return;
 
     setIsAsking(true);
     setError(null);
     try {
-      await onAskFollowUp(question);
-      setQuestion('');
+      await onAskFollowUp(questionToAsk);
+      setQuestion(''); // Clear textarea on success
     } catch (err: any) {
       setError(err.message || 'Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.');
     } finally {
       setIsAsking(false);
     }
   };
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await executeAsk(question);
+  };
+
+  const handleSuggestedQuestionClick = async (suggestedQuestion: string) => {
+    setQuestion(suggestedQuestion);
+    await executeAsk(suggestedQuestion);
+  };
+
 
   return (
     <div className="border-b border-slate-200 dark:border-slate-700">
@@ -44,6 +55,27 @@ const GuideAccordionItem: React.FC<{ step: GuideStep; isOpen: boolean; onClick: 
         <div className="p-5 border-t-0 border-slate-200 dark:border-slate-700">
           <MarkdownRenderer content={step.content} />
           
+          {step.suggestedFollowUps && step.suggestedFollowUps.length > 0 && (
+            <div className="mt-6">
+              <h4 className="text-md font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center">
+                <SparklesIcon className={`h-5 w-5 mr-2 ${theme['text-primary-500']}`} />
+                Zum Weiterdenken:
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {step.suggestedFollowUps.map((q, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleSuggestedQuestionClick(q)}
+                    disabled={isAsking}
+                    className={`px-3 py-1.5 text-sm rounded-full transition-colors flex items-center ${theme['bg-primary-100_dark-900/50']} ${theme['text-primary-800_dark-200']} hover:bg-slate-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 ${theme['focus:ring-primary-500']} disabled:opacity-70 disabled:cursor-not-allowed`}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+           )}
+
           <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
             <h4 className="text-md font-semibold text-slate-800 dark:text-slate-200 mb-3">Noch etwas unklar? Frag nach!</h4>
             
@@ -65,11 +97,11 @@ const GuideAccordionItem: React.FC<{ step: GuideStep; isOpen: boolean; onClick: 
                     ))}
                 </div>
             )}
-            <form onSubmit={handleAsk} className="relative">
+            <form onSubmit={handleFormSubmit} className="relative">
               <textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Stelle hier deine Frage zum obigen Inhalt..." className={`w-full p-3 pr-12 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 ${theme['focus:ring-primary-500']} ${theme['border-primary-500']} transition-colors bg-white dark:bg-slate-800`} rows={2} disabled={isAsking} />
               <button type="submit" className={`absolute top-1/2 right-3 -translate-y-1/2 p-2 rounded-full text-slate-500 ${theme['hover:bg-primary-100_dark-800']} ${theme['hover:text-primary-600_dark-300']} disabled:cursor-not-allowed disabled:opacity-50`} disabled={isAsking || !question.trim()} aria-label="Frage absenden"><SendIcon className="w-5 h-5" /></button>
             </form>
-            {isAsking && <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 animate-pulse">KI denkt nach...</p>}
+            {isAsking && <div className="mt-2"><InlineSpinner text="KI denkt nach..." /></div>}
             {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
           </div>
         </div>

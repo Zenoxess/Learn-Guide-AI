@@ -7,6 +7,7 @@ export interface GuideStep {
   title: string;
   content: string;
   followUps?: FollowUp[];
+  suggestedFollowUps?: string[];
 }
 
 export interface GuideResponse {

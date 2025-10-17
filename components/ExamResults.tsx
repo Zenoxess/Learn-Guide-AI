@@ -1,16 +1,23 @@
-import React from 'react';
-import type { GradedAnswer } from '../types';
-import { AcademicCapIcon, CheckIcon } from './icons';
+import React, { useState, useEffect } from 'react';
+import type { GradedAnswer, ModelName } from '../types';
+import { AcademicCapIcon } from './icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { getPersonalizedRecommendations } from '../services/geminiService';
+import { PersonalizedFeedback } from './PersonalizedFeedback';
 
 interface ExamResultsProps {
   results: GradedAnswer[];
   onRetry: () => void;
+  scriptFiles: File[];
+  model: ModelName;
 }
 
-export const ExamResults: React.FC<ExamResultsProps> = ({ results, onRetry }) => {
+export const ExamResults: React.FC<ExamResultsProps> = ({ results, onRetry, scriptFiles, model }) => {
   const { theme } = useTheme();
+  const [recommendations, setRecommendations] = useState<string | null>(null);
+  const [isFetchingFeedback, setIsFetchingFeedback] = useState(false);
+  
   const correctAnswers = results.filter(r => r.isCorrect).length;
   const totalQuestions = results.length;
   const scorePercentage = totalQuestions > 0 ? (correctAnswers / totalQuestions) * 100 : 0;
@@ -21,6 +28,26 @@ export const ExamResults: React.FC<ExamResultsProps> = ({ results, onRetry }) =>
   } else if (scorePercentage >= 50) {
     scoreColor = 'text-yellow-500';
   }
+
+  useEffect(() => {
+    const incorrectAnswers = results.filter(r => !r.isCorrect);
+    
+    if (incorrectAnswers.length > 0 && scriptFiles.length > 0) {
+      const fetchRecommendations = async () => {
+        setIsFetchingFeedback(true);
+        try {
+          const recs = await getPersonalizedRecommendations(scriptFiles, incorrectAnswers, model);
+          setRecommendations(recs);
+        } catch (error) {
+          console.error("Failed to get personalized recommendations:", error);
+        } finally {
+          setIsFetchingFeedback(false);
+        }
+      };
+      
+      fetchRecommendations();
+    }
+  }, [results, scriptFiles, model]);
 
   return (
     <div className="w-full max-w-4xl mx-auto">
@@ -70,6 +97,11 @@ export const ExamResults: React.FC<ExamResultsProps> = ({ results, onRetry }) =>
             ))}
         </div>
         
+        <PersonalizedFeedback 
+          isLoading={isFetchingFeedback}
+          recommendations={recommendations}
+        />
+
         <div className="mt-8 text-center">
              <button
                 onClick={onRetry}
