@@ -18,6 +18,7 @@ import { ThemeSwitcher } from './components/ThemeSwitcher';
 declare const jspdf: any;
 
 type AppState = 'initial' | 'loading' | 'success' | 'error' | 'guided' | 'exam' | 'examResults' | 'simulation' | 'keyConcepts' | 'flashcards';
+type ScriptAction = 'guide' | 'concepts' | 'flashcards' | 'exam';
 const LOCAL_STORAGE_KEY_GUIDE = 'lernGuideAppState';
 
 interface SavedState {
@@ -75,6 +76,7 @@ export default function App() {
   const [activeMode, setActiveMode] = useState<'solution' | 'simulation'>('solution');
   const [solutionMode, setSolutionMode] = useState<SolutionMode>('direct');
   const [simulationMode, setSimulationMode] = useState<SimulationModeType>('coop');
+  const [selectedScriptAction, setSelectedScriptAction] = useState<ScriptAction>('guide');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -415,6 +417,36 @@ export default function App() {
   const modelOptions = [ { id: 'gemini-2.5-flash', label: 'Flash' }, { id: 'gemini-2.5-pro', label: 'Pro' } ];
   const modelDescriptions: Record<ModelName, string> = { 'gemini-2.5-flash': 'Schnell und effizient, für die meisten Aufgaben geeignet.', 'gemini-2.5-pro': 'Leistungsstark, ideal für komplexe Dokumente.' };
   
+  const scriptActionOptions = [
+    { id: 'guide', label: 'Lern-Guide', icon: BookOpenIcon, description: 'Erstellt eine detaillierte, schrittweise Anleitung durch Ihre Dokumente, um komplexe Themen verständlich aufzubereiten.' },
+    { id: 'concepts', label: 'Konzepte', icon: KeyIcon, description: 'Extrahiert die wichtigsten Schlüsselbegriffe und Definitionen aus den Skripten und stellt sie als übersichtliches Glossar dar.' },
+    { id: 'flashcards', label: 'Lernkarten', icon: RectangleStackIcon, description: 'Generiert automatisch Frage-Antwort-Karten basierend auf den Kerninhalten Ihrer Dokumente – ideal zum Abfragen und Festigen von Wissen.' },
+    { id: 'exam', label: 'Prüfung', icon: AcademicCapIcon, description: 'Erstellt einen simulierten Test mit relevanten Fragen zu Ihren Unterlagen, um Ihr Wissen zu überprüfen und Sie auf echte Prüfungen vorzubereiten.' },
+  ];
+
+  const handleStartGeneration = () => {
+    if (!selectedScriptAction) {
+        setError("Bitte wählen Sie eine Aktion aus.");
+        return;
+    }
+    switch (selectedScriptAction) {
+        case 'guide':
+            handleGenerateGuide();
+            break;
+        case 'concepts':
+            handleGenerateKeyConcepts();
+            break;
+        case 'flashcards':
+            handleGenerateFlashcards();
+            break;
+        case 'exam':
+            handleStartExam();
+            break;
+        default:
+            console.error("Unbekannte Aktion ausgewählt");
+    }
+  };
+
   const getButtonTextAndAction = () => {
       if (!practiceFile) return { text: "Aktion wählen", action: () => {}, disabled: true };
       if (activeMode === 'solution') {
@@ -448,9 +480,7 @@ export default function App() {
                 </div>
             </>
         );
-// FIX: Changed prop name from scriptFile to scriptFiles to match the component's updated props interface.
       case 'guided': return <GuidedSolution scriptFiles={scriptFiles} practiceFile={practiceFile!} questions={practiceQuestions} model={model} onExit={handleReturnToConfig} />;
-// FIX: Changed prop name from scriptFile to scriptFiles to match the component's updated props interface.
       case 'simulation': return <SimulationMode scriptFiles={scriptFiles} practiceFile={practiceFile!} questions={practiceQuestions} model={model} mode={simulationMode} onExit={handleReturnToConfig} />;
       case 'exam': return <ExamMode questions={examQuestions} onSubmit={handleGradeExam} onExit={handleReturnToConfig} />;
       case 'examResults': return <ExamResults results={examResults} onRetry={handleReset} />;
@@ -490,10 +520,14 @@ export default function App() {
             
             {scriptFiles.length > 0 && (
                 <div className="mt-8 space-y-8 p-6 bg-white dark:bg-slate-800/50 rounded-lg shadow-sm">
-                    <div className="animate-fade-in"><h3 className="text-lg font-medium text-slate-900 dark:text-slate-200 mb-4">Optional: Übungen hinzufügen</h3><FileUpload onFilesAdd={(files) => setPracticeFile(files[0])} isLoading={false} label="2. Übungsaufgaben / Probeklausur" description="Datei hierher ziehen oder auswählen" /></div>
+                    <div className="animate-fade-in">
+                        <h3 className="text-lg font-medium text-slate-900 dark:text-slate-200 mb-4">Optional: Übungen hinzufügen</h3>
+                        <FileUpload onFilesAdd={(files) => setPracticeFile(files[0])} isLoading={false} label="2. Übungsaufgaben / Probeklausur" description="Datei hierher ziehen oder auswählen" />
+                    </div>
                      
-                     {practiceFile ? (
+                    {practiceFile ? (
                         <div className="animate-fade-in" style={{animationDelay: '100ms'}}>
+                            {/* Practice Mode Options */}
                             <fieldset><legend className="text-base font-medium text-slate-900 dark:text-slate-200 mb-2">Modus wählen</legend>
                                 <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 p-1">
                                     <div key="solution"><input type="radio" id="solution" name="active-mode" value="solution" checked={activeMode === 'solution'} onChange={() => setActiveMode('solution')} className="sr-only"/><label htmlFor="solution" className={`cursor-pointer select-none rounded-md p-2 text-center text-sm font-medium transition-colors duration-200 ${activeMode === 'solution' ? `${theme['bg-primary-600']} text-white shadow` : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700' }`}>Lösung</label></div>
@@ -507,20 +541,53 @@ export default function App() {
                             )}
                         </div>
                     ) : (
-                        <fieldset className="animate-fade-in" style={{animationDelay: '100ms'}}><legend className="text-base font-medium text-slate-900 dark:text-slate-200 mb-2">Detaillierungsgrad (nur für Lern-Guide)</legend><div className="grid grid-cols-3 gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 p-1">{detailOptions.map((o) => <div key={o.id}><input type="radio" name="detail-level" id={o.id} value={o.id} checked={detailLevel === o.id} onChange={() => setDetailLevel(o.id as DetailLevel)} className="sr-only" /><label htmlFor={o.id} className={`flex flex-col items-center justify-center cursor-pointer select-none rounded-md p-3 text-center text-sm font-medium transition-colors ${detailLevel === o.id ? `${theme['bg-primary-600']} text-white shadow` : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700' }`}><o.icon className="h-6 w-6 mb-1" />{o.label}</label></div>)}</div><div className="mt-3 text-sm text-slate-600 dark:text-slate-400 min-h-[3em]"><p>{detailDescriptions[detailLevel]}</p></div></fieldset>
+                        <div className="animate-fade-in space-y-6" style={{animationDelay: '100ms'}}>
+                            <fieldset>
+                                <legend className="text-base font-medium text-slate-900 dark:text-slate-200 mb-2">Detaillierungsgrad (nur für Lern-Guide)</legend>
+                                <div className="grid grid-cols-3 gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 p-1">
+                                    {detailOptions.map((o) => (
+                                        <div key={o.id}>
+                                            <input type="radio" name="detail-level" id={o.id} value={o.id} checked={detailLevel === o.id} onChange={() => setDetailLevel(o.id as DetailLevel)} className="sr-only" />
+                                            <label htmlFor={o.id} className={`flex flex-col items-center justify-center cursor-pointer select-none rounded-md p-3 text-center text-sm font-medium transition-colors ${detailLevel === o.id ? `${theme['bg-primary-600']} text-white shadow` : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700' }`}>
+                                                <o.icon className="h-6 w-6 mb-1" />
+                                                {o.label}
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-3 text-sm text-slate-600 dark:text-slate-400 min-h-[3em]"><p>{detailDescriptions[detailLevel]}</p></div>
+                            </fieldset>
+                        </div>
                     )}
 
                     <fieldset className="animate-fade-in" style={{animationDelay: '200ms'}}><legend className="text-base font-medium text-slate-900 dark:text-slate-200 mb-2">KI-Modell</legend><div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 p-1">{modelOptions.map((o) => <div key={o.id}><input type="radio" name="model-select" id={o.id} value={o.id} checked={model === o.id} onChange={() => setModel(o.id as ModelName)} className="sr-only" /><label htmlFor={o.id} className={`flex flex-col items-center justify-center cursor-pointer select-none rounded-md p-3 text-center text-sm font-medium transition-colors ${model === o.id ? `${theme['bg-primary-600']} text-white shadow` : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}><CpuChipIcon className="h-6 w-6 mb-1" />{o.label}</label></div>)}</div><div className="mt-3 text-sm text-slate-600 dark:text-slate-400 min-h-[3em]"><p>{modelDescriptions[model]}</p></div></fieldset>
                     <div className="flex items-center justify-center animate-fade-in" style={{animationDelay: '300ms'}}><input id="strict-context-checkbox" type="checkbox" checked={useStrictContext} onChange={(e) => setUseStrictContext(e.target.checked)} className={`h-4 w-4 rounded border-slate-300 dark:border-slate-600 ${theme['text-primary-600_dark-400']} focus:ring-indigo-500 bg-transparent`} /><label htmlFor="strict-context-checkbox" className="ml-2 block text-sm text-slate-700 dark:text-slate-300 select-none">Nur Inhalt aus Skripten verwenden (empfohlen)</label></div>
+                    
                     <div className="animate-fade-in mt-8" style={{animationDelay: '400ms'}}>
                         {practiceFile ? (
                              <button onClick={buttonAction} className={`w-full px-8 py-3 ${theme['bg-primary-600']} text-white font-bold text-lg rounded-lg shadow-lg ${theme['hover:bg-primary-700']} focus:outline-none focus:ring-2 ${theme['focus:ring-primary-400']} focus:ring-opacity-75 transition-all transform hover:scale-105`}>{buttonText}</button>
                         ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                 <button onClick={handleGenerateGuide} className={`w-full px-4 py-3 ${theme['bg-primary-600']} text-white font-bold text-lg rounded-lg shadow-lg ${theme['hover:bg-primary-700']} focus:outline-none focus:ring-2 ${theme['focus:ring-primary-400']} focus:ring-opacity-75 transition-all transform hover:scale-105 flex items-center justify-center`}><BookOpenIcon className="h-6 w-6 mr-2" /> Lern-Guide</button>
-                                 <button onClick={handleGenerateKeyConcepts} className="w-full px-4 py-3 bg-slate-700 text-white font-bold text-lg rounded-lg shadow-lg hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-opacity-75 transition-all transform hover:scale-105 flex items-center justify-center"><KeyIcon className="h-6 w-6 mr-2" /> Konzepte</button>
-                                 <button onClick={handleGenerateFlashcards} className="w-full px-4 py-3 bg-slate-700 text-white font-bold text-lg rounded-lg shadow-lg hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-opacity-75 transition-all transform hover:scale-105 flex items-center justify-center"><RectangleStackIcon className="h-6 w-6 mr-2" /> Lernkarten</button>
-                                 <button onClick={handleStartExam} className="w-full px-4 py-3 bg-slate-700 text-white font-bold text-lg rounded-lg shadow-lg hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-opacity-75 transition-all transform hover:scale-105 flex items-center justify-center"><AcademicCapIcon className="h-6 w-6 mr-2" /> Prüfung</button>
+                            <div className="space-y-6">
+                                <div>
+                                    <legend className="text-base font-medium text-slate-900 dark:text-slate-200 mb-2">Was möchtest du tun?</legend>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 p-1">
+                                        {scriptActionOptions.map((opt) => (
+                                            <div key={opt.id}>
+                                                <input type="radio" name="script-action" id={opt.id} value={opt.id} checked={selectedScriptAction === opt.id} onChange={() => setSelectedScriptAction(opt.id as ScriptAction)} className="sr-only" />
+                                                <label htmlFor={opt.id} className={`flex flex-col items-center justify-center cursor-pointer select-none rounded-md p-3 text-center text-sm font-medium transition-colors duration-200 h-full ${selectedScriptAction === opt.id ? `bg-white dark:bg-slate-700 ${theme['text-primary-600_dark-400']} dark:text-white shadow-sm` : 'hover:bg-white/60 dark:hover:bg-slate-700/60'}`}>
+                                                    <opt.icon className="h-6 w-6 mb-1.5" />
+                                                    {opt.label}
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="text-center text-sm text-slate-600 dark:text-slate-400 min-h-[4em] bg-slate-50 dark:bg-slate-800/60 p-3 rounded-md border border-slate-200 dark:border-slate-700 flex items-center justify-center">
+                                    <p>{scriptActionOptions.find(opt => opt.id === selectedScriptAction)?.description}</p>
+                                </div>
+                                <button onClick={handleStartGeneration} className={`w-full px-8 py-3 ${theme['bg-primary-600']} text-white font-bold text-lg rounded-lg shadow-lg ${theme['hover:bg-primary-700']} focus:outline-none focus:ring-2 ${theme['focus:ring-primary-400']} focus:ring-opacity-75 transition-all transform hover:scale-105`}>
+                                    Ausgewählte Aktion starten
+                                </button>
                             </div>
                         )}
                     </div>
