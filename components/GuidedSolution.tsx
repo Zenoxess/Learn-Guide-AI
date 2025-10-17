@@ -32,6 +32,8 @@ interface GuidedSolutionProps {
   onExit: () => void;
 }
 
+type QuestionStatus = 'not-started' | 'in-progress' | 'completed';
+
 export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, practiceFile, questions, model, onExit }) => {
   const { theme } = useTheme();
   const chatRef = useRef<Chat | null>(null);
@@ -44,6 +46,7 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContentRef = useRef<HTMLDivElement>(null);
+  const [questionStatuses, setQuestionStatuses] = useState<Record<number, QuestionStatus>>({});
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -66,6 +69,19 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
   const handleSelectQuestion = useCallback(async (index: number) => {
     if (isTutorLoading || !chatRef.current) return;
     
+    const isSameQuestion = selectedQuestionIndex === index;
+
+    setQuestionStatuses(prevStatuses => {
+        const newStatuses = { ...prevStatuses };
+        if (selectedQuestionIndex !== null && !isSameQuestion) {
+            newStatuses[selectedQuestionIndex] = 'completed';
+        }
+        newStatuses[index] = 'in-progress';
+        return newStatuses;
+    });
+
+    if (isSameQuestion) return;
+
     setSelectedQuestionIndex(index);
     setMessages([]);
     setIsTutorLoading(true);
@@ -82,7 +98,7 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
     } finally {
         setIsTutorLoading(false);
     }
-  }, [questions, isTutorLoading]);
+  }, [questions, isTutorLoading, selectedQuestionIndex]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,8 +179,9 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
       }
   };
 
-  const progress = selectedQuestionIndex !== null ? ((selectedQuestionIndex + 1) / questions.length) * 100 : 0;
-
+  const completedQuestions = Object.values(questionStatuses).filter(s => s === 'completed').length;
+  const progress = questions.length > 0 ? (completedQuestions / questions.length) * 100 : 0;
+  
   if (isInitializing) {
     return <div className="text-center p-8">
         <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${theme['border-primary-500']} mx-auto`}></div>
@@ -190,18 +207,51 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
             <h2 className="text-lg font-semibold">Fragenübersicht</h2>
         </div>
         <ul className="overflow-y-auto flex-grow">
-          {questions.map((q, index) => (
-            <li key={index}>
-              <button
-                onClick={() => handleSelectQuestion(index)}
-                disabled={isTutorLoading}
-                className={`w-full text-left p-4 text-sm hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors disabled:opacity-50 ${selectedQuestionIndex === index ? `${theme['bg-primary-100_dark-900/50']} ${theme['text-primary-800_dark-200']}` : ''}`}
-              >
-                <span className="font-semibold block">Frage {index + 1}</span>
-                <span className="text-slate-600 dark:text-slate-400">{q.substring(0, 80)}{q.length > 80 ? '...' : ''}</span>
-              </button>
-            </li>
-          ))}
+          {questions.map((q, index) => {
+            const status = questionStatuses[index] || 'not-started';
+            
+            const getStatusClasses = () => {
+                switch(status) {
+                    case 'in-progress':
+                        return {
+                            bg: `${theme['bg-primary-100_dark-900/50']}`,
+                            text: `${theme['text-primary-800_dark-200']}`,
+                            indicator: `${theme['bg-primary-500']}`
+                        };
+                    case 'completed':
+                        return {
+                            bg: 'bg-green-100 dark:bg-green-900/40',
+                            text: 'text-green-800 dark:text-green-300',
+                            indicator: 'bg-green-500'
+                        };
+                    default: // 'not-started'
+                        return {
+                            bg: 'hover:bg-slate-100 dark:hover:bg-slate-700/50',
+                            text: '',
+                            indicator: 'bg-slate-300 dark:bg-slate-600'
+                        };
+                }
+            };
+            const statusClasses = getStatusClasses();
+
+            return (
+                <li key={index}>
+                  <button
+                    onClick={() => handleSelectQuestion(index)}
+                    disabled={isTutorLoading}
+                    className={`w-full text-left p-4 text-sm transition-colors disabled:opacity-50 flex items-start gap-3 ${statusClasses.bg} ${statusClasses.text}`}
+                  >
+                    <div className="flex-shrink-0 pt-1.5">
+                        <div className={`w-2 h-2 rounded-full ${statusClasses.indicator}`}></div>
+                    </div>
+                    <div className="flex-grow">
+                        <span className="font-semibold block">Frage {index + 1}</span>
+                        <span className="text-slate-600 dark:text-slate-400">{q}</span>
+                    </div>
+                  </button>
+                </li>
+            );
+          })}
         </ul>
         <div className="p-4 border-t border-slate-200 dark:border-slate-700">
             <label htmlFor="progress-bar" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Fortschritt</label>
@@ -216,7 +266,7 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
                 ></div>
             </div>
             <p className="text-right text-xs text-slate-500 dark:text-slate-400 mt-1">
-                {selectedQuestionIndex !== null ? selectedQuestionIndex + 1 : 0} / {questions.length} Fragen
+                {completedQuestions} / {questions.length} Fragen abgeschlossen
             </p>
         </div>
       </aside>
@@ -232,13 +282,13 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFile, prac
         ) : (
             <>
                 <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center flex-shrink-0">
-                    <h3 className="font-semibold text-slate-800 dark:text-slate-200 truncate pr-4" title={questions[selectedQuestionIndex]}>
+                    <h3 className="font-semibold text-slate-800 dark:text-slate-200 pr-4">
                         {questions[selectedQuestionIndex]}
                     </h3>
                     <button 
                         onClick={handleExportPdf} 
                         disabled={isExportingPdf || messages.length === 0}
-                        className="inline-flex items-center px-3 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium rounded-md hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="inline-flex items-center px-3 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium rounded-md hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                         aria-label="Chat als PDF exportieren"
                     >
                         {isExportingPdf ? (

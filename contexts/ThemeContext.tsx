@@ -16,6 +16,7 @@ const generateThemeClasses = (color: string) => ({
     'hover:bg-primary-700': `hover:bg-${color}-700`,
 
     // Text
+    'text-primary-400_dark-500': `text-${color}-400 dark:text-${color}-500`,
     'text-primary-500': `text-${color}-500`,
     'text-primary-600_dark-400': `text-${color}-600 dark:text-${color}-400`,
     'text-primary-700_dark-300': `text-${color}-700 dark:text-${color}-300`,
@@ -23,6 +24,7 @@ const generateThemeClasses = (color: string) => ({
     'hover:text-primary-600_dark-300': `hover:text-${color}-600 dark:hover:text-${color}-300`,
 
     // Borders
+    'border-primary-300_dark-600': `border-${color}-300 dark:border-${color}-600`,
     'border-primary-500': `border-${color}-500`,
     'hover:border-primary-400_dark-500': `hover:border-${color}-400 dark:hover:border-${color}-500`,
     

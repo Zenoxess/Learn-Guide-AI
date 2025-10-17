@@ -85,7 +85,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             ? 'cursor-default bg-green-50 dark:bg-green-900/50 border-green-500'
         : isDragOver 
             ? `cursor-copy ${theme['bg-primary-50_dark-900/50']} ${theme['border-primary-500']}` 
-            : `cursor-pointer bg-white dark:bg-slate-800/50 border-slate-300 dark:border-slate-600 ${theme['hover:border-primary-400_dark-500']}`
+            : `cursor-pointer bg-white dark:bg-slate-800/50 ${theme['border-primary-300_dark-600']} ${theme['hover:border-primary-400_dark-500']}`
     }
   `;
 
@@ -118,7 +118,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center">
-            <UploadIcon className={`mx-auto h-12 w-12 transition-colors duration-200 ${isDragOver ? theme['text-primary-500'] : 'text-slate-400'}`} />
+            <UploadIcon className={`mx-auto h-12 w-12 transition-colors duration-200 ${isDragOver ? theme['text-primary-500'] : theme['text-primary-400_dark-500']}`} />
             <span className="mt-2 block text-sm font-medium text-slate-900 dark:text-slate-200">
               {isDragOver ? 'Datei hier ablegen' : label}
             </span>

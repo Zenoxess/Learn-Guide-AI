@@ -174,7 +174,7 @@ interface ResultDisplayProps {
 }
 
 export const GuideDisplay: React.FC<ResultDisplayProps> = ({ guide, solvedQuestions, onAskFollowUp, openStepIndex, onStepClick }) => {
-
+  const { theme } = useTheme();
   const handleItemClick = (index: number) => {
     onStepClick(openStepIndex === index ? null : index);
   };
@@ -182,7 +182,7 @@ export const GuideDisplay: React.FC<ResultDisplayProps> = ({ guide, solvedQuesti
 
   return (
     <div className="w-full max-w-4xl mx-auto bg-white dark:bg-slate-800/50 rounded-lg shadow-md overflow-hidden">
-        <h2 className="p-5 text-2xl font-bold text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700">
+        <h2 className={`p-5 text-2xl font-bold ${theme['text-primary-600_dark-400']} border-b border-slate-200 dark:border-slate-700`}>
             {isGuideMode ? 'Dein persönlicher Lern-Guide' : 'Gelöste Übungsaufgaben'}
         </h2>
         {isGuideMode && guide.map((step, index) => (
