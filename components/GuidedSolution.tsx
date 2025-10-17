@@ -228,9 +228,9 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFiles, pra
                     <div className="flex-shrink-0 pt-1.5">
                         <div className={`w-2 h-2 rounded-full ${statusClasses.indicator}`}></div>
                     </div>
-                    <div className="flex-grow">
+                    <div className="flex-grow min-w-0">
                         <span className="font-semibold block">Frage {index + 1}</span>
-                        <span className="text-slate-600 dark:text-slate-400">{q}</span>
+                        <span className="text-slate-600 dark:text-slate-400 break-words">{q}</span>
                     </div>
                   </button>
                 </li>

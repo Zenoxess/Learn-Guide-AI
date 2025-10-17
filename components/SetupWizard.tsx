@@ -59,24 +59,79 @@ export const SetupWizard: React.FC<SetupWizardProps> = (props) => {
   const modelOptions = [ { id: 'gemini-2.5-flash', label: 'Flash' }, { id: 'gemini-2.5-pro', label: 'Pro' } ];
   const modelDescriptions: Record<ModelName, string> = { 'gemini-2.5-flash': 'Schnell und effizient, für die meisten Aufgaben.', 'gemini-2.5-pro': 'Leistungsstark, für komplexe Dokumente.' };
 
-  const renderStepIndicator = () => (
-    <div className="mb-8">
-        <h2 className="sr-only">Schritte</h2>
-        <div className="flex items-center justify-center">
-            {[1, 2, 3].map((s) => (
-            <React.Fragment key={s}>
-                <div className={`flex items-center ${s <= step ? theme['text-primary-600_dark-400'] : 'text-slate-500'}`}>
-                <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${s <= step ? theme['border-primary-600_dark-400'] : 'border-slate-300 dark:border-slate-600'}`}>
-                    {s < step ? <CheckIcon className="h-5 w-5" /> : <span>{s}</span>}
-                </div>
-                <span className="ml-2 hidden sm:block text-sm font-medium">{['Dateien', 'Lernpfad', 'Details'][s-1]}</span>
-                </div>
-                {s < 3 && <div className={`flex-auto border-t-2 transition-colors ${s < step ? theme['border-primary-600_dark-400'] : 'border-slate-300 dark:border-slate-600'}`} />}
-            </React.Fragment>
-            ))}
-        </div>
-    </div>
-  );
+  const renderStepIndicator = () => {
+    const steps = ['Dateien', 'Lernpfad', 'Details'];
+    return (
+      <nav aria-label="Fortschritt" className="mb-12 w-full max-w-2xl mx-auto px-4">
+        <ol className="flex items-start">
+          {steps.map((label, index) => {
+            const s = index + 1;
+            const isCompleted = s < step;
+            const isActive = s === step;
+
+            return (
+              <React.Fragment key={s}>
+                {/* Step Item (Circle + Label) */}
+                <li className="relative flex flex-col items-center text-center w-24">
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all duration-300 z-10 ${
+                      isActive || isCompleted
+                        ? `${theme['border-primary-500']}`
+                        : 'border-slate-300 dark:border-slate-600'
+                    } ${
+                      isCompleted ? theme['bg-primary-500'] : 'bg-white dark:bg-slate-800'
+                    }`}
+                    aria-current={isActive ? 'step' : undefined}
+                  >
+                    {isCompleted ? (
+                      <CheckIcon className="h-6 w-6 text-white" />
+                    ) : (
+                      <span
+                        className={`font-bold ${
+                          isActive
+                            ? theme['text-primary-600_dark-400']
+                            : 'text-slate-500 dark:text-slate-400'
+                        }`}
+                      >
+                        {s}
+                      </span>
+                    )}
+                  </div>
+                  <p
+                    className={`mt-2 text-sm font-medium transition-colors duration-300 ${
+                      isActive
+                        ? theme['text-primary-600_dark-400']
+                        : isCompleted
+                        ? 'text-slate-700 dark:text-slate-300'
+                        : 'text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    {label}
+                  </p>
+                </li>
+
+                {/* Connector Line */}
+                {s < steps.length && (
+                  <li className="relative flex-auto" aria-hidden="true">
+                    {/* Background line, positioned to be in the vertical center of the circle */}
+                    <div className="absolute top-5 h-0.5 w-full bg-slate-300 dark:bg-slate-600" />
+                    {/* Animated foreground line */}
+                    <div
+                      className={`absolute top-5 h-0.5 ${theme['bg-primary-500']} transition-transform duration-500 ease-in-out`}
+                      style={{
+                        transform: isCompleted ? 'scaleX(1)' : 'scaleX(0)',
+                        transformOrigin: 'left',
+                      }}
+                    />
+                  </li>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </ol>
+      </nav>
+    );
+  };
 
   const renderStep1 = () => (
     <div className="space-y-6">

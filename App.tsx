@@ -204,11 +204,10 @@ export default function App() {
             doc.save(filename);
             setNotification({ message: "PDF erfolgreich heruntergeladen.", type: 'success' });
           },
-          x: 0,
-          y: 0,
+          margin: 15, // Set margin to 15mm on all sides
           width: 210, // A4 width in mm
           windowWidth: elementToPrint.scrollWidth,
-          autoPaging: 'text'
+          autoPaging: 'slice' // Use 'slice' to prevent element splitting
         });
 
       } catch (err) {

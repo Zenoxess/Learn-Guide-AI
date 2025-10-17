@@ -233,7 +233,7 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFiles, pra
                   return (
                       <li key={index} className={`p-4 text-sm flex items-start gap-3 border-b border-slate-200 dark:border-slate-700 ${statusClasses.bg}`}>
                           <div className="flex-shrink-0 pt-1.5"><div className={`w-2 h-2 rounded-full ${statusClasses.indicator}`}></div></div>
-                          <div className="flex-grow"><span className="font-semibold block">Frage {index + 1}</span><span className="text-slate-600 dark:text-slate-400">{q}</span></div>
+                          <div className="flex-grow min-w-0"><span className="font-semibold block">Frage {index + 1}</span><span className="text-slate-600 dark:text-slate-400 break-words">{q}</span></div>
                       </li>
                   );
               })}

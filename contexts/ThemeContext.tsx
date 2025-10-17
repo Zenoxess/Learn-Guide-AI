@@ -32,6 +32,14 @@ const generateThemeClasses = (color: string) => ({
     'focus:ring-primary-300_dark-800': `focus:ring-${color}-300 dark:focus:ring-${color}-800`,
     'focus:ring-primary-400': `focus:ring-${color}-400`,
     'focus:ring-primary-500': `focus:ring-${color}-500`,
+
+    // Prose (Markdown) Theming
+    'prose-headings': `prose-headings:text-${color}-700 dark:prose-headings:text-${color}-300`,
+    'prose-strong': `prose-strong:text-${color}-600 dark:prose-strong:text-${color}-400`,
+    'prose-a': `prose-a:text-${color}-600 hover:prose-a:text-${color}-700 dark:prose-a:text-${color}-400 dark:hover:prose-a:text-${color}-300`,
+    'prose-blockquote': `prose-blockquote:border-${color}-300 dark:prose-blockquote:border-${color}-700`,
+    'prose-hr': `prose-hr:border-${color}-200 dark:prose-hr:border-${color}-700`,
+    'prose-li-marker': `prose-li:marker:text-${color}-500 dark:prose-li:marker:text-${color}-400`,
 });
 
 export const availableThemes = {

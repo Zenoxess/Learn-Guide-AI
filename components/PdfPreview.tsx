@@ -12,53 +12,59 @@ interface PdfPreviewProps {
 const styles = `
   #pdf-content {
     font-family: Arial, sans-serif;
-    color: #333;
-    line-height: 1.6;
-    padding: 15mm;
+    color: #333333;
+    line-height: 1.5;
     background-color: white;
-    width: 210mm;
+    width: 210mm; /* A4 width */
     box-sizing: border-box;
   }
   #pdf-content h1 {
-    font-size: 24pt;
+    font-size: 22pt;
     font-weight: bold;
-    color: #2D3748;
-    margin-bottom: 20pt;
-    border-bottom: 2px solid #E2E8F0;
-    padding-bottom: 10pt;
+    color: #1a202c;
+    margin-bottom: 8pt;
+    padding-bottom: 8pt;
+    border-bottom: 2px solid #e2e8f0;
+  }
+  #pdf-content .subtitle {
+      font-size: 10pt;
+      color: #718096;
+      margin-bottom: 24pt;
   }
   #pdf-content .guide-step, #pdf-content .solved-question {
-    margin-bottom: 25pt;
     page-break-inside: avoid;
+    margin-bottom: 20pt;
   }
   #pdf-content h2 {
-    font-size: 18pt;
+    font-size: 16pt;
     font-weight: bold;
-    color: #2D3748;
-    margin-bottom: 15pt;
-    border-bottom: 1px solid #CBD5E0;
-    padding-bottom: 5pt;
+    color: #2d374d;
+    margin-bottom: 12pt;
+    padding-bottom: 4pt;
+    border-bottom: 1px solid #cbd5e0;
   }
   #pdf-content h3 {
-    font-size: 14pt;
+    font-size: 12pt;
     font-weight: bold;
-    color: #4A5568;
-    margin-top: 15pt;
-    margin-bottom: 8pt;
+    color: #4a5568;
+    margin-top: 16pt;
+    margin-bottom: 6pt;
   }
   #pdf-content p, #pdf-content li {
-    font-size: 11pt;
-    margin-bottom: 8pt;
+    font-size: 10pt;
+    margin-bottom: 6pt;
   }
   #pdf-content ul, #pdf-content ol {
-    padding-left: 20pt;
+    padding-left: 18pt;
+    page-break-inside: avoid;
   }
   #pdf-content blockquote {
-    border-left: 4px solid #A0AEC0;
-    padding-left: 15pt;
+    border-left: 3px solid #a0aec0;
+    padding-left: 12pt;
     margin-left: 0;
     font-style: italic;
-    color: #4A5568;
+    color: #4a5568;
+    page-break-inside: avoid;
   }
   #pdf-content pre, #pdf-content code {
     font-size: 9pt;
@@ -67,18 +73,22 @@ const styles = `
     border-radius: 4px;
     padding: 8pt;
     white-space: pre-wrap;
-    word-break: break-all;
+    word-wrap: break-word; /* Use word-wrap instead of break-all */
+    page-break-inside: avoid;
   }
 `;
 
 export const PdfPreview: React.FC<PdfPreviewProps> = ({ guide, solvedQuestions }) => {
   const mainTitle = guide && guide.length > 0 ? 'Dein persönlicher Lern-Guide' : 'Gelöste Übungsaufgaben';
+  const subtitle = `Generiert von Lern-Guide AI am ${new Date().toLocaleDateString('de-DE')}`;
 
   return (
     <>
       <style>{styles}</style>
       <div id="pdf-content">
         <h1>{mainTitle}</h1>
+        <p className="subtitle">{subtitle}</p>
+
         {guide && guide.map((step, index) => (
           <div key={`guide-${index}`} className="guide-step">
             <h2>{step.title}</h2>
