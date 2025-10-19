@@ -4,6 +4,7 @@ import { ChevronDownIcon, SendIcon, SparklesIcon, BookOpenIcon, LightBulbIcon, E
 import { useTheme } from '../contexts/ThemeContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { InlineSpinner } from './InlineSpinner';
+import { Button } from './Button';
 
 const getIconForTitle = (title: string): React.FC<{className?: string}> => {
     const lowerCaseTitle = title.toLowerCase();
@@ -142,7 +143,7 @@ const GuideAccordionItem: React.FC<{ step: GuideStep; isOpen: boolean; onClick: 
   );
 };
 
-const SolvedQuestionAccordionItem: React.FC<{ item: SolvedQuestion; isOpen: boolean; onClick: () => void; }> = ({ item, isOpen, onClick }) => {
+const SolvedQuestionAccordionItem: React.FC<{ item: SolvedQuestion; isOpen: boolean; onClick: () => void; index: number; }> = ({ item, isOpen, onClick, index }) => {
     const { theme } = useTheme();
     return (
         <div className="border-b border-slate-200 dark:border-slate-700">
@@ -154,7 +155,7 @@ const SolvedQuestionAccordionItem: React.FC<{ item: SolvedQuestion; isOpen: bool
             aria-expanded={isOpen}
             aria-controls={`accordion-body-${item.title.replace(/\s+/g, '-')}`}
             >
-            <span className="text-lg">{item.title}</span>
+            <span className="text-lg text-left pr-4"><strong>Aufgabe {index + 1}:</strong> {item.title}</span>
             <ChevronDownIcon className={`w-6 h-6 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
             </button>
         </h2>
@@ -190,9 +191,12 @@ interface ResultDisplayProps {
   onAskFollowUp?: (stepIndex: number, question: string) => Promise<void>;
   openStepIndex: number | null;
   onStepClick: (index: number | null) => void;
+  onSolveNextBatch?: () => void;
+  isSolvingNextBatch?: boolean;
+  hasMoreQuestions?: boolean;
 }
 
-export const GuideDisplay: React.FC<ResultDisplayProps> = React.memo(({ guide, solvedQuestions, onAskFollowUp, openStepIndex, onStepClick }) => {
+export const GuideDisplay: React.FC<ResultDisplayProps> = React.memo(({ guide, solvedQuestions, onAskFollowUp, openStepIndex, onStepClick, onSolveNextBatch, isSolvingNextBatch, hasMoreQuestions }) => {
   const { theme } = useTheme();
   const handleItemClick = (index: number) => {
     onStepClick(openStepIndex === index ? null : index);
@@ -225,9 +229,32 @@ export const GuideDisplay: React.FC<ResultDisplayProps> = React.memo(({ guide, s
                     item={item}
                     isOpen={openStepIndex === index}
                     onClick={() => handleItemClick(index)}
+                    index={index}
                 />
             ))}
         </div>
+        {!isGuideMode && hasMoreQuestions && onSolveNextBatch && (
+            <div className="p-6 text-center bg-slate-50 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
+                <Button
+                    onClick={onSolveNextBatch}
+                    disabled={isSolvingNextBatch}
+                    variant="primary"
+                    size="lg"
+                >
+                    {isSolvingNextBatch ? (
+                        <>
+                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Löse...
+                        </>
+                    ) : (
+                        'Nächste 5 Aufgaben lösen'
+                    )}
+                </Button>
+            </div>
+        )}
     </div>
   );
 });

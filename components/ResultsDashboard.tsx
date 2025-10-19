@@ -99,6 +99,11 @@ interface ResultsDashboardProps {
   setModel: (model: ModelName) => void;
   useStrictContext: boolean;
   setUseStrictContext: (use: boolean) => void;
+  // Props for batch solving
+  handleSolveNextBatch: () => void;
+  isSolvingNextBatch: boolean;
+  totalPracticeQuestionsCount: number;
+  solvedPracticeQuestionsCount: number;
 }
 
 type TabKey = keyof GeneratedContent | 'add';
@@ -163,7 +168,16 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = React.memo((pro
     switch(activeTab) {
       case 'guide':
       case 'solvedQuestions': // Both handled by GuideDisplay
-        return <GuideDisplay guide={props.generatedContent.guide} solvedQuestions={props.generatedContent.solvedQuestions} onAskFollowUp={props.onAskFollowUp} openStepIndex={props.openStepIndex} onStepClick={props.onStepClick} />;
+        return <GuideDisplay 
+                    guide={props.generatedContent.guide} 
+                    solvedQuestions={props.generatedContent.solvedQuestions} 
+                    onAskFollowUp={props.onAskFollowUp} 
+                    openStepIndex={props.openStepIndex} 
+                    onStepClick={props.onStepClick}
+                    onSolveNextBatch={props.handleSolveNextBatch}
+                    isSolvingNextBatch={props.isSolvingNextBatch}
+                    hasMoreQuestions={props.solvedPracticeQuestionsCount < props.totalPracticeQuestionsCount}
+                />;
       case 'keyConcepts':
         return <KeyConceptsDisplay concepts={props.generatedContent.keyConcepts!} onReturn={props.onReset} />;
       case 'flashcards':

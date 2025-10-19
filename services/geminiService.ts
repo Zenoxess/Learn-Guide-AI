@@ -178,25 +178,20 @@ export const askFollowUpQuestion = async (context: string, question: string): Pr
   return response.text;
 };
 
-export const solvePracticeQuestions = async (scriptFiles: File[], practiceFile: File, model: ModelName): Promise<PracticeResponse> => {
+export const solvePracticeQuestions = async (scriptFiles: File[], questions: string[], model: ModelName): Promise<PracticeResponse> => {
     if (!process.env.API_KEY) {
         throw new Error("API_KEY environment variable is not set");
     }
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
     const scriptParts = await filesToGenerativeParts(scriptFiles);
-    const practiceBase64 = await fileToBase64(practiceFile)
-    const practicePart = { inlineData: { mimeType: practiceFile.type, data: practiceBase64 } };
 
     const prompt = `
       Du bist ein spezialisierter Universitäts-Tutor. Deine Aufgabe ist es, Übungsaufgaben zu lösen.
-      Du hast Dokumente erhalten:
-      1. Die "Skripte": Dies ist die einzige Wissensquelle, die du verwenden darfst.
-      2. Die "Übungsaufgaben": Dieses Dokument enthält die Fragen, die du beantworten sollst.
-
+      Du hast "Skripte" erhalten, die du als einzige Wissensquelle verwenden darfst.
+      
       DEINE AUFGABE:
-      - Analysiere jede Frage aus dem "Übungsaufgaben"-Dokument.
-      - Finde die relevante Information zur Beantwortung der Frage AUSSCHLIESSLICH in den "Skript"-Dokumenten.
+      - Bearbeite jede der folgenden Fragen: ${JSON.stringify(questions)}
+      - Finde die relevante Information zur Beantwortung jeder Frage AUSSCHLIESSLICH in den "Skript"-Dokumenten.
       - Formuliere für jede Frage eine umfassende Antwort und eine schrittweise Erklärung des Lösungswegs.
       - Gib für jede Antwort eine präzise Referenz an, wo in den "Skripten" die Information gefunden wurde (z.B. "Siehe Folie 5, Abschnitt 'Thema X'" oder "Basierend auf der Formel im Kapitel Y").
       - Deine gesamte Antwort muss auf Deutsch und im vorgegebenen JSON-Format sein. Verwende Markdown für die Formatierung der textuellen Inhalte.
@@ -204,7 +199,6 @@ export const solvePracticeQuestions = async (scriptFiles: File[], practiceFile: 
 
     const contents: Content[] = [
         ...scriptParts.map(part => ({ parts: [{ text: "Das ist ein Skript:" }, part] })),
-        { parts: [{ text: "Das sind die Übungsaufgaben:" }, practicePart] },
         { parts: [{ text: prompt }] }
     ];
 

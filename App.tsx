@@ -56,6 +56,8 @@ export default function App() {
   const { theme } = useTheme();
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent>({});
   const [practiceQuestions, setPracticeQuestions] = useState<string[]>([]);
+  const [allPracticeQuestions, setAllPracticeQuestions] = useState<string[]>([]);
+  const [isSolvingNextBatch, setIsSolvingNextBatch] = useState(false);
   const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [appState, setAppState] = useState<AppState>('initial');
@@ -147,6 +149,7 @@ export default function App() {
     setGeneratedContent({});
     setPracticeQuestions([]);
     setExamQuestions([]);
+    setAllPracticeQuestions([]);
     setError(null);
     setOpenStepIndex(null);
     setAppState('initial');
@@ -284,7 +287,7 @@ export default function App() {
   
   const handleAddScriptFiles = useCallback((newFiles: File[]) => {
       setScriptFiles(prevFiles => {
-          const uniqueNewFiles = newFiles.filter(nf => !prevFiles.some(pf => pf.name === nf.name && pf.size === nf.size && pf.lastModified === nf.lastModified));
+          const uniqueNewFiles = newFiles.filter(nf => !prevFiles.some(pf => pf.name === nf.name && pf.size === nf.size && pf.lastModified === pf.lastModified));
           return [...prevFiles, ...uniqueNewFiles];
       });
   }, []);
@@ -399,22 +402,62 @@ export default function App() {
 
   const handleSolvePractice = useCallback(async () => {
     if (scriptFiles.length === 0 || !practiceFile) return;
-    const interval = startLoadingProcess();
+    const interval = startLoadingProcess("Extrahiere Fragen und löse die erste Gruppe...");
     try {
-        const result = await solvePracticeQuestions(scriptFiles, practiceFile, model);
+        const allQuestions = await extractQuestions(practiceFile, model);
+        if (!allQuestions || allQuestions.length === 0) {
+            throw new Error("Es konnten keine Fragen aus dem Übungsdokument extrahiert werden.");
+        }
+        setAllPracticeQuestions(allQuestions);
+
+        const firstBatch = allQuestions.slice(0, 5);
+        const result = await solvePracticeQuestions(scriptFiles, firstBatch, model);
+
         finishLoadingProcess(interval, () => {
             if (result.solvedQuestions && result.solvedQuestions.length > 0) {
-                setGeneratedContent(prev => ({...prev, solvedQuestions: result.solvedQuestions, guide: null }));
+                setGeneratedContent(prev => ({ ...prev, solvedQuestions: result.solvedQuestions, guide: null }));
                 setAppState('resultsDashboard');
                 setOpenStepIndex(0);
             } else {
-                throw new Error("Die KI konnte die Übungsaufgaben nicht lösen.");
+                throw new Error("Die KI konnte die ersten Übungsaufgaben nicht lösen.");
             }
         });
     } catch (err) {
         handleLoadingError(interval, err);
     }
   }, [scriptFiles, practiceFile, model]);
+
+  const handleSolveNextBatch = useCallback(async () => {
+    if (isSolvingNextBatch || scriptFiles.length === 0) return;
+
+    const solvedCount = generatedContent.solvedQuestions?.length || 0;
+    if (solvedCount >= allPracticeQuestions.length) return;
+
+    setIsSolvingNextBatch(true);
+    setError(null);
+
+    try {
+        const nextBatch = allPracticeQuestions.slice(solvedCount, solvedCount + 5);
+        if (nextBatch.length === 0) {
+            setIsSolvingNextBatch(false);
+            return;
+        }
+        
+        const result = await solvePracticeQuestions(scriptFiles, nextBatch, model);
+        if (result.solvedQuestions && result.solvedQuestions.length > 0) {
+            setGeneratedContent(prev => ({
+                ...prev,
+                solvedQuestions: [...(prev.solvedQuestions || []), ...result.solvedQuestions]
+            }));
+        } else {
+             setNotification({ message: "Die KI konnte keine weiteren Aufgaben lösen.", type: 'warning' });
+        }
+    } catch (err: any) {
+        setError(err.message || "Fehler beim Lösen der nächsten Aufgaben.");
+    } finally {
+        setIsSolvingNextBatch(false);
+    }
+  }, [isSolvingNextBatch, scriptFiles, model, generatedContent.solvedQuestions, allPracticeQuestions]);
 
   const handleStartGuidedOrSimulation = useCallback(async () => {
     if (!practiceFile || scriptFiles.length === 0) return;
@@ -540,6 +583,11 @@ export default function App() {
             setModel={setModel}
             useStrictContext={useStrictContext}
             setUseStrictContext={setUseStrictContext}
+            // Props for batch solving
+            handleSolveNextBatch={handleSolveNextBatch}
+            isSolvingNextBatch={isSolvingNextBatch}
+            totalPracticeQuestionsCount={allPracticeQuestions.length}
+            solvedPracticeQuestionsCount={generatedContent.solvedQuestions?.length || 0}
         />
       );
       case 'guided': return <GuidedSolution scriptFiles={scriptFiles} practiceFile={practiceFile!} questions={practiceQuestions} model={model} onExit={handleReturnToConfig} />;
