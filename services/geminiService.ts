@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, Chat, Part, Content } from "@google/genai";
-import type { GuideResponse, PracticeResponse, DetailLevel, ModelName, ExamQuestion, ExamAnswer, ExamResult, GradedAnswer, JudgedRound, KeyConceptsResponse, FlashcardsResponse } from '../types';
+import type { GuideResponse, PracticeResponse, DetailLevel, ModelName, ExamQuestion, ExamAnswer, ExamResult, GradedAnswer, JudgedRound, KeyConceptsResponse, FlashcardsResponse, SolvedQuestion } from '../types';
 import { fileToBase64 } from "../utils";
 
 const filesToGenerativeParts = (files: File[]): Promise<Part[]> => {
@@ -283,6 +283,39 @@ export const extractQuestions = async (practiceFile: File, model: ModelName): Pr
         console.error("Failed to parse questions from Gemini response:", jsonText);
         throw new Error("Die Fragen aus dem Übungsdokument konnten nicht extrahiert werden.");
     }
+};
+
+export const askFollowUpOnSolution = async (context: SolvedQuestion, question: string): Promise<string> => {
+  if (!process.env.API_KEY) {
+    throw new Error("API_KEY environment variable is not set");
+  }
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+  const prompt = `
+    Du bist ein hilfsbereiter Universitäts-Tutor. Beantworte die Nachfrage des Studenten kurz und prägnant.
+    Die Frage bezieht sich auf die folgende gelöste Aufgabe. Beziehe dich in deiner Antwort auf diesen Kontext.
+
+    ---
+    **Ursprüngliche Frage:** ${context.title}
+
+    **Musterlösung:**
+    ${context.answer}
+
+    **Erklärung der Lösung:**
+    ${context.explanation}
+    ---
+
+    **Nachfrage des Studenten:**
+    ${question}
+    ---
+  `;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: prompt,
+  });
+
+  return response.text;
 };
 
 export const startTutorChat = async (scriptFiles: File[], practiceFile: File, model: ModelName): Promise<Chat> => {

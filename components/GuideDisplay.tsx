@@ -143,8 +143,28 @@ const GuideAccordionItem: React.FC<{ step: GuideStep; isOpen: boolean; onClick: 
   );
 };
 
-const SolvedQuestionAccordionItem: React.FC<{ item: SolvedQuestion; isOpen: boolean; onClick: () => void; index: number; }> = ({ item, isOpen, onClick, index }) => {
+const SolvedQuestionAccordionItem: React.FC<{ item: SolvedQuestion; isOpen: boolean; onClick: () => void; index: number; onAskFollowUp: (question: string) => Promise<void>; }> = ({ item, isOpen, onClick, index, onAskFollowUp }) => {
     const { theme } = useTheme();
+    const [question, setQuestion] = React.useState('');
+    const [isAsking, setIsAsking] = React.useState(false);
+    const [error, setError] = React.useState<string | null>(null);
+
+    const handleFormSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!question.trim() || isAsking) return;
+
+        setIsAsking(true);
+        setError(null);
+        try {
+            await onAskFollowUp(question);
+            setQuestion('');
+        } catch (err: any) {
+            setError(err.message || 'Ein Fehler ist aufgetreten.');
+        } finally {
+            setIsAsking(false);
+        }
+    };
+    
     return (
         <div className="border-b border-slate-200 dark:border-slate-700">
         <h2 id={`accordion-header-${item.title.replace(/\s+/g, '-')}`}>
@@ -179,6 +199,28 @@ const SolvedQuestionAccordionItem: React.FC<{ item: SolvedQuestion; isOpen: bool
                         <MarkdownRenderer content={item.reference} />
                     </blockquote>
                 </div>
+                 <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
+                    <h4 className="text-md font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center">
+                        <ChatBubbleLeftRightIcon className={`h-5 w-5 mr-2 ${theme['text-primary-500']}`} />
+                        Noch etwas unklar? Frag nach!
+                    </h4>
+                    {item.followUps && item.followUps.length > 0 && (
+                        <div className="space-y-6 mb-6">
+                            {item.followUps.map((qa, i) => (
+                                <div key={i}>
+                                    <div className="flex flex-col items-start mb-4"><p className="font-semibold text-sm text-slate-600 dark:text-slate-400 mb-1 ml-2">Du</p><div className="p-3 bg-slate-200 dark:bg-slate-700/50 rounded-2xl rounded-tl-none max-w-[85%] text-slate-800 dark:text-slate-200"><p>{qa.question}</p></div></div>
+                                    <div className="flex flex-col items-start"><p className={`font-semibold text-sm ${theme['text-primary-600_dark-400']} mb-1 ml-2`}>AI Tutor</p><div className={`p-3 ${theme['bg-primary-50_dark-900/40']} rounded-2xl rounded-bl-none max-w-[85%]`}><MarkdownRenderer content={qa.answer} /></div></div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    <form onSubmit={handleFormSubmit} className="relative">
+                        <textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Stelle hier deine Frage zur Lösung..." className={`w-full p-3 pr-12 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 ${theme['focus:ring-primary-500']} transition-colors bg-white dark:bg-slate-900/50`} rows={2} disabled={isAsking} />
+                        <button type="submit" className={`absolute top-1/2 right-3 -translate-y-1/2 p-2 rounded-full text-slate-500 ${theme['hover:bg-primary-100_dark-800']} ${theme['hover:text-primary-600_dark-300']} disabled:cursor-not-allowed disabled:opacity-50`} disabled={isAsking || !question.trim()} aria-label="Frage absenden"><SendIcon className="w-5 h-5" /></button>
+                    </form>
+                    {isAsking && <div className="mt-2"><InlineSpinner text="KI denkt nach..." /></div>}
+                    {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+                </div>
             </div>
         </div>
         </div>
@@ -189,6 +231,7 @@ interface ResultDisplayProps {
   guide?: GuideStep[];
   solvedQuestions?: SolvedQuestion[];
   onAskFollowUp?: (stepIndex: number, question: string) => Promise<void>;
+  onAskFollowUpOnSolution?: (questionIndex: number, question: string) => Promise<void>;
   openStepIndex: number | null;
   onStepClick: (index: number | null) => void;
   onSolveNextBatch?: () => void;
@@ -196,7 +239,7 @@ interface ResultDisplayProps {
   hasMoreQuestions?: boolean;
 }
 
-export const GuideDisplay: React.FC<ResultDisplayProps> = React.memo(({ guide, solvedQuestions, onAskFollowUp, openStepIndex, onStepClick, onSolveNextBatch, isSolvingNextBatch, hasMoreQuestions }) => {
+export const GuideDisplay: React.FC<ResultDisplayProps> = React.memo(({ guide, solvedQuestions, onAskFollowUp, onAskFollowUpOnSolution, openStepIndex, onStepClick, onSolveNextBatch, isSolvingNextBatch, hasMoreQuestions }) => {
   const { theme } = useTheme();
   const handleItemClick = (index: number) => {
     onStepClick(openStepIndex === index ? null : index);
@@ -230,6 +273,7 @@ export const GuideDisplay: React.FC<ResultDisplayProps> = React.memo(({ guide, s
                     isOpen={openStepIndex === index}
                     onClick={() => handleItemClick(index)}
                     index={index}
+                    onAskFollowUp={(question) => onAskFollowUpOnSolution!(index, question)}
                 />
             ))}
         </div>

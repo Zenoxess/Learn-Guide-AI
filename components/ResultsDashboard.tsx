@@ -84,6 +84,7 @@ interface ResultsDashboardProps {
   scriptFiles: File[];
   model: ModelName;
   onAskFollowUp: (stepIndex: number, question: string) => Promise<void>;
+  onAskFollowUpOnSolution: (questionIndex: number, question: string) => Promise<void>;
   openStepIndex: number | null;
   onStepClick: (index: number | null) => void;
   onReset: () => void;
@@ -172,6 +173,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = React.memo((pro
                     guide={props.generatedContent.guide} 
                     solvedQuestions={props.generatedContent.solvedQuestions} 
                     onAskFollowUp={props.onAskFollowUp} 
+                    onAskFollowUpOnSolution={props.onAskFollowUpOnSolution}
                     openStepIndex={props.openStepIndex} 
                     onStepClick={props.onStepClick}
                     onSolveNextBatch={props.handleSolveNextBatch}

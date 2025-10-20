@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import type { GuideStep, DetailLevel, ModelName, SolutionMode, ExamQuestion, ExamAnswer, GradedAnswer, SimulationModeType, ScriptAction, GeneratedContent, NotificationType } from './types';
-import { generateStudyGuide, askFollowUpQuestion, solvePracticeQuestions, extractQuestions, generateExamQuestions, gradeExamAnswers, generateKeyConcepts, generateFlashcards, generateContentFromUrl } from './services/geminiService';
+import { generateStudyGuide, askFollowUpQuestion, solvePracticeQuestions, extractQuestions, generateExamQuestions, gradeExamAnswers, generateKeyConcepts, generateFlashcards, generateContentFromUrl, askFollowUpOnSolution } from './services/geminiService';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { PdfPreview } from './components/PdfPreview';
 import { SessionPrompt } from './components/SessionPrompt';
@@ -499,6 +499,26 @@ export default function App() {
     }
   }, [generatedContent.guide]);
   
+  const handleAskFollowUpOnSolution = useCallback(async (questionIndex: number, question: string) => {
+    if (!generatedContent.solvedQuestions) return;
+    try {
+        const context = generatedContent.solvedQuestions[questionIndex];
+        const answer = await askFollowUpOnSolution(context, question);
+        setGeneratedContent(current => {
+            if (!current.solvedQuestions) return current;
+            const newSolved = [...current.solvedQuestions];
+            const questionToUpdate = { ...newSolved[questionIndex] };
+            if (!questionToUpdate.followUps) questionToUpdate.followUps = [];
+            questionToUpdate.followUps.push({ question, answer });
+            newSolved[questionIndex] = questionToUpdate;
+            return { ...current, solvedQuestions: newSolved };
+        });
+    } catch (err: any) {
+        console.error("Failed to get answer for follow-up on solution:", err);
+        throw err;
+    }
+  }, [generatedContent.solvedQuestions]);
+
   const handleStartGeneration = useCallback(() => {
     if (!selectedScriptAction) {
         setError("Bitte wählen Sie eine Aktion aus.");
@@ -568,6 +588,7 @@ export default function App() {
             scriptFiles={scriptFiles}
             model={model}
             onAskFollowUp={handleAskFollowUp}
+            onAskFollowUpOnSolution={handleAskFollowUpOnSolution}
             openStepIndex={openStepIndex}
             onStepClick={setOpenStepIndex}
             onReset={handleReset}

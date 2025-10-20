@@ -22,6 +22,7 @@ export interface SolvedQuestion {
   answer: string;
   explanation: string;
   reference: string;
+  followUps?: FollowUp[];
 }
 
 export interface PracticeResponse {
