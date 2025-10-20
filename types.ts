@@ -19,6 +19,7 @@ export type ModelName = 'gemini-2.5-flash' | 'gemini-2.5-pro';
 
 export interface SolvedQuestion {
   title: string;
+  questionText: string;
   answer: string;
   explanation: string;
   reference: string;

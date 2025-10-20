@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Chat } from '@google/genai';
 import { startCoopChat, getAIOpponentAnswer, judgeAnswers } from '../services/geminiService';
-import type { ChatMessage, ModelName, SimulationModeType, JudgedRound } from '../types';
+import type { ChatMessage, ModelName, SimulationModeType, JudgedRound, ExamQuestion } from '../types';
 import { ArrowUturnLeftIcon, SendIcon, BrainCircuitIcon, UsersIcon, SparklesIcon } from './icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -10,7 +10,7 @@ interface SimulationModeProps {
 // FIX: Changed from scriptFile: File to scriptFiles: File[] to accept multiple script files.
   scriptFiles: File[];
   practiceFile: File;
-  questions: string[];
+  questions: ExamQuestion[];
   model: ModelName;
   mode: SimulationModeType;
   onExit: () => void;
@@ -52,7 +52,7 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFiles, pra
 // FIX: Pass scriptFiles array to startCoopChat instead of a single file.
                 const chat = await startCoopChat(scriptFiles, practiceFile, model);
                 coopChatRef.current = chat;
-                const initialMsg: ChatMessage = { role: 'system', text: `Lasst uns mit der ersten Frage anfangen: "${questions[0]}" Was sind deine ersten Gedanken dazu?` };
+                const initialMsg: ChatMessage = { role: 'system', text: `Lasst uns mit der ersten Frage anfangen: "${questions[0].questionText}" Was sind deine ersten Gedanken dazu?` };
                 setCoopMessages([initialMsg]);
             } catch (err: any) {
                 setError(err.message || "Der Ko-op-Chat konnte nicht gestartet werden.");
@@ -75,9 +75,9 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFiles, pra
     try {
         const currentQuestion = questions[currentQuestionIndex];
 // FIX: Pass scriptFiles array to getAIOpponentAnswer instead of a single file.
-        const aiOpponentAnswer = await getAIOpponentAnswer(scriptFiles, currentQuestion, model);
+        const aiOpponentAnswer = await getAIOpponentAnswer(scriptFiles, currentQuestion.questionText, model);
 // FIX: Pass scriptFiles array to judgeAnswers instead of a single file.
-        const result = await judgeAnswers(scriptFiles, currentQuestion, userAnswer, aiOpponentAnswer, model);
+        const result = await judgeAnswers(scriptFiles, currentQuestion.questionText, userAnswer, aiOpponentAnswer, model);
         setCurrentRoundResult(result);
         setUserScore(prev => prev + result.userScore);
         setAiScore(prev => prev + result.aiScore);
@@ -108,7 +108,7 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFiles, pra
           setUserAnswer('');
           setError(null);
           if (mode === 'coop') {
-              const nextQuestionMsg: ChatMessage = { role: 'system', text: `Okay, nächste Frage: "${questions[nextIndex]}" Wie gehen wir hier vor?` };
+              const nextQuestionMsg: ChatMessage = { role: 'system', text: `Okay, nächste Frage: "${questions[nextIndex].questionText}" Wie gehen wir hier vor?` };
               setCoopMessages(prev => [...prev, nextQuestionMsg]);
           }
       } else {
@@ -144,7 +144,7 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFiles, pra
   const renderVsMode = () => (
     <div className="flex flex-col h-full">
         <div className="p-4 border-b border-slate-200 dark:border-slate-700">
-            <h3 className="font-semibold text-slate-800 dark:text-slate-200">{questions[currentQuestionIndex]}</h3>
+            <h3 className="font-semibold text-slate-800 dark:text-slate-200">{questions[currentQuestionIndex].id}: {questions[currentQuestionIndex].questionText}</h3>
         </div>
         <div className="flex-grow p-6 overflow-y-auto bg-slate-50 dark:bg-slate-800">
             {isRoundOver && currentRoundResult ? (
@@ -177,7 +177,7 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFiles, pra
  const renderCoopMode = () => (
     <div className="flex flex-col h-full">
         <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-            <h3 className="font-semibold text-slate-800 dark:text-slate-200">{questions[currentQuestionIndex]}</h3>
+            <h3 className="font-semibold text-slate-800 dark:text-slate-200">{questions[currentQuestionIndex].id}: {questions[currentQuestionIndex].questionText}</h3>
              <button onClick={handleNextQuestion} disabled={isLastQuestion} className="px-3 py-1 text-sm bg-slate-200 dark:bg-slate-700 rounded-md hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50">Nächste &rarr;</button>
         </div>
         <div ref={coopMessagesEndRef} className="flex-grow p-4 space-y-4 overflow-y-auto bg-slate-50 dark:bg-slate-800">
@@ -233,7 +233,12 @@ export const SimulationMode: React.FC<SimulationModeProps> = ({ scriptFiles, pra
                   return (
                       <li key={index} className={`p-4 text-sm flex items-start gap-3 border-b border-slate-200 dark:border-slate-700 ${statusClasses.bg}`}>
                           <div className="flex-shrink-0 pt-1.5"><div className={`w-2 h-2 rounded-full ${statusClasses.indicator}`}></div></div>
-                          <div className="flex-grow min-w-0"><span className="font-semibold block">Frage {index + 1}</span><span className="text-slate-600 dark:text-slate-400 break-words">{q}</span></div>
+                          <div className="flex-grow min-w-0">
+                            <p className="break-words">
+                                <strong className="font-semibold text-slate-800 dark:text-slate-200">{q.id}</strong>
+                                <span className="ml-2 text-slate-600 dark:text-slate-400">{q.questionText}</span>
+                            </p>
+                          </div>
                       </li>
                   );
               })}

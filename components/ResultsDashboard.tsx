@@ -89,6 +89,7 @@ interface ResultsDashboardProps {
   onStepClick: (index: number | null) => void;
   onReset: () => void;
   onExportToPdf: () => void;
+  onExportSession: () => void;
   isExportingPdf: boolean;
   // Add More Content Props
   handleGenerateGuide: () => void;
@@ -211,7 +212,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = React.memo((pro
     <div className="w-full max-w-6xl mx-auto">
         <div className="sm:flex sm:items-center sm:justify-between mb-6">
             <div className="border-b border-gray-200 dark:border-gray-700">
-                <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+                <nav className="-mb-px flex space-x-2" aria-label="Tabs">
                     {availableTabs.map(key => {
                         const tab = tabOptions[key];
                         const Icon = tab.icon;
@@ -219,21 +220,34 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = React.memo((pro
                         return (
                             <button key={key} onClick={() => setActiveTab(key)}
                                 disabled={isGenerating}
-                                className={`whitespace-nowrap flex items-center py-3 px-1 border-b-2 font-medium text-sm focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${isActive ? `${theme['border-primary-500']} ${theme['text-primary-600_dark-400']}` : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'}`}>
-                                <Icon className={`-ml-0.5 mr-2 h-5 w-5 ${isActive ? theme['text-primary-500'] : ''}`} />
+                                className={`whitespace-nowrap flex items-center py-3 px-4 rounded-t-lg border-b-2 font-medium text-sm focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200
+                                    ${isActive 
+                                        ? `${theme['border-primary-500']} ${theme['text-primary-600_dark-400']} bg-slate-50 dark:bg-slate-800/50` 
+                                        : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/70 dark:hover:bg-slate-800/20'
+                                    }`
+                                }>
+                                <Icon className={`-ml-0.5 mr-2 h-5 w-5 ${isActive ? theme['text-primary-500'] : 'text-slate-400'}`} />
                                 {tab.label}
                             </button>
                         );
                     })}
                     <button onClick={() => setActiveTab('add')}
                         disabled={isGenerating}
-                        className={`whitespace-nowrap flex items-center py-3 px-1 border-b-2 font-medium text-sm focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${activeTab === 'add' ? `${theme['border-primary-500']} ${theme['text-primary-600_dark-400']}` : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'}`}>
-                        <PlusCircleIcon className={`-ml-0.5 mr-2 h-5 w-5 ${activeTab === 'add' ? theme['text-primary-500'] : ''}`} />
+                        className={`whitespace-nowrap flex items-center py-3 px-4 rounded-t-lg border-b-2 font-medium text-sm focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200
+                            ${activeTab === 'add' 
+                                ? `${theme['border-primary-500']} ${theme['text-primary-600_dark-400']} bg-slate-50 dark:bg-slate-800/50` 
+                                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/70 dark:hover:bg-slate-800/20'
+                            }`
+                        }>
+                        <PlusCircleIcon className={`-ml-0.5 mr-2 h-5 w-5 ${activeTab === 'add' ? theme['text-primary-500'] : 'text-slate-400'}`} />
                         Hinzufügen
                     </button>
                 </nav>
             </div>
-            <div className="mt-3 sm:ml-4 sm:mt-0">
+            <div className="mt-3 sm:ml-4 sm:mt-0 flex items-center gap-2">
+                <Button onClick={props.onExportSession} variant="secondary" leftIcon={<DocumentArrowDownIcon className="h-5 w-5" />}>
+                    Sitzung
+                </Button>
                 {showExportButton && (
                     <Button onClick={props.onExportToPdf} disabled={props.isExportingPdf || isGenerating} variant="secondary" leftIcon={
                         props.isExportingPdf 

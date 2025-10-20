@@ -55,8 +55,8 @@ interface SavedSession {
 export default function App() {
   const { theme } = useTheme();
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent>({});
-  const [practiceQuestions, setPracticeQuestions] = useState<string[]>([]);
-  const [allPracticeQuestions, setAllPracticeQuestions] = useState<string[]>([]);
+  const [practiceQuestions, setPracticeQuestions] = useState<ExamQuestion[]>([]);
+  const [allPracticeQuestions, setAllPracticeQuestions] = useState<ExamQuestion[]>([]);
   const [isSolvingNextBatch, setIsSolvingNextBatch] = useState(false);
   const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -170,33 +170,101 @@ export default function App() {
       // Optional: reset state if needed, though App's default state should suffice
       handleReset();
   }, [handleReset]);
-
-  const handleRestoreSession = useCallback(() => {
-    if (!savedSessionData) return;
-
+  
+  const restoreSessionState = useCallback((sessionData: SavedSession) => {
     try {
-      const restoredScriptFiles = savedSessionData.scriptFiles.map(f => base64ToFile(f.data, f.name, f.type));
-      const restoredPracticeFile = savedSessionData.practiceFile ? base64ToFile(savedSessionData.practiceFile.data, savedSessionData.practiceFile.name, savedSessionData.practiceFile.type) : null;
+      const restoredScriptFiles = sessionData.scriptFiles.map(f => base64ToFile(f.data, f.name, f.type));
+      const restoredPracticeFile = sessionData.practiceFile ? base64ToFile(sessionData.practiceFile.data, sessionData.practiceFile.name, sessionData.practiceFile.type) : null;
       
       setScriptFiles(restoredScriptFiles);
       setPracticeFile(restoredPracticeFile);
-      setGeneratedContent(savedSessionData.generatedContent);
-      setOpenStepIndex(savedSessionData.openStepIndex);
-      setUseStrictContext(savedSessionData.useStrictContext);
-      setDetailLevel(savedSessionData.detailLevel);
-      setModel(savedSessionData.model);
-      setSelectedScriptAction(savedSessionData.selectedScriptAction);
-      setAppState(savedSessionData.appState);
-
+      setGeneratedContent(sessionData.generatedContent);
+      setOpenStepIndex(sessionData.openStepIndex);
+      setUseStrictContext(sessionData.useStrictContext);
+      setDetailLevel(sessionData.detailLevel);
+      setModel(sessionData.model);
+      setSelectedScriptAction(sessionData.selectedScriptAction);
+      setAppState(sessionData.appState);
+      return true;
     } catch (error) {
         console.error("Error restoring session:", error);
-        alert("Die Sitzung konnte nicht vollständig wiederhergestellt werden. Es wird eine neue Sitzung gestartet.");
+        setNotification({ message: "Die Sitzungsdatei konnte nicht wiederhergestellt werden.", type: 'warning' });
         handleStartNewSession();
-    } finally {
-        setShowSessionPrompt(false);
-        setSavedSessionData(null);
+        return false;
     }
-  }, [savedSessionData, handleStartNewSession]);
+  }, [handleStartNewSession]);
+
+
+  const handleRestoreSession = useCallback(() => {
+    if (!savedSessionData) return;
+    restoreSessionState(savedSessionData);
+    setShowSessionPrompt(false);
+    setSavedSessionData(null);
+  }, [savedSessionData, restoreSessionState]);
+
+  const handleImportSession = useCallback(async (file: File) => {
+    if (!file || file.type !== 'application/json') {
+        setNotification({ message: "Bitte wählen Sie eine gültige .json Sitzungsdatei aus.", type: 'warning' });
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const result = event.target?.result;
+            if (typeof result !== 'string') {
+                throw new Error("Konnte Datei nicht als Text lesen.");
+            }
+            const sessionData: SavedSession = JSON.parse(result);
+            // Basic validation
+            if (sessionData.appState && sessionData.scriptFiles) {
+                if (restoreSessionState(sessionData)) {
+                    setNotification({ message: "Sitzung erfolgreich importiert!", type: 'success' });
+                }
+            } else {
+                throw new Error("Ungültiges Sitzungsdateiformat.");
+            }
+        } catch (err) {
+            console.error("Fehler beim Importieren der Sitzung:", err);
+            setNotification({ message: "Die ausgewählte Datei ist keine gültige Sitzungsdatei.", type: 'warning' });
+        }
+    };
+    reader.readAsText(file);
+  }, [restoreSessionState]);
+
+  const handleExportSession = async () => {
+    try {
+        const serializableScriptFiles = await Promise.all(
+            scriptFiles.map(async file => ({
+                name: file.name, type: file.type, lastModified: file.lastModified, data: await fileToBase64(file)
+            }))
+        );
+        const serializablePracticeFile = practiceFile ? {
+            name: practiceFile.name, type: practiceFile.type, lastModified: practiceFile.lastModified, data: await fileToBase64(practiceFile)
+        } : null;
+
+        const sessionToSave: SavedSession = {
+            appState, scriptFiles: serializableScriptFiles, practiceFile: serializablePracticeFile,
+            generatedContent, openStepIndex, useStrictContext, detailLevel, model, selectedScriptAction,
+        };
+        
+        const sessionJson = JSON.stringify(sessionToSave, null, 2);
+        const blob = new Blob([sessionJson], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const date = new Date().toISOString().slice(0, 10);
+        a.download = `lern-guide-session-${date}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        setNotification({ message: "Sitzung erfolgreich exportiert.", type: 'success' });
+    } catch (err) {
+        console.error("Fehler beim Exportieren der Sitzung:", err);
+        setNotification({ message: "Sitzung konnte nicht exportiert werden.", type: 'warning' });
+    }
+  };
 
 
   useEffect(() => {
@@ -287,7 +355,7 @@ export default function App() {
   
   const handleAddScriptFiles = useCallback((newFiles: File[]) => {
       setScriptFiles(prevFiles => {
-          const uniqueNewFiles = newFiles.filter(nf => !prevFiles.some(pf => pf.name === nf.name && pf.size === nf.size && pf.lastModified === pf.lastModified));
+          const uniqueNewFiles = newFiles.filter(nf => !prevFiles.some(pf => pf.name === nf.name && pf.size === pf.size && pf.lastModified === pf.lastModified));
           return [...prevFiles, ...uniqueNewFiles];
       });
   }, []);
@@ -593,6 +661,7 @@ export default function App() {
             onStepClick={setOpenStepIndex}
             onReset={handleReset}
             onExportToPdf={handleExportToPdf}
+            onExportSession={handleExportSession}
             isExportingPdf={isExportingPdf}
             // Add More Content Props
             handleGenerateGuide={handleGenerateGuide}
@@ -640,6 +709,7 @@ export default function App() {
               isUrlLoading={isUrlLoading}
               handleLoadFromUrl={handleLoadFromUrl}
               error={error}
+              onImportSession={handleImportSession}
               
               // Lernpfad-Optionen
               selectedScriptAction={selectedScriptAction}

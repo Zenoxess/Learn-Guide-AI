@@ -178,7 +178,7 @@ export const askFollowUpQuestion = async (context: string, question: string): Pr
   return response.text;
 };
 
-export const solvePracticeQuestions = async (scriptFiles: File[], questions: string[], model: ModelName): Promise<PracticeResponse> => {
+export const solvePracticeQuestions = async (scriptFiles: File[], questions: ExamQuestion[], model: ModelName): Promise<PracticeResponse> => {
     if (!process.env.API_KEY) {
         throw new Error("API_KEY environment variable is not set");
     }
@@ -190,7 +190,11 @@ export const solvePracticeQuestions = async (scriptFiles: File[], questions: str
       Du hast "Skripte" erhalten, die du als einzige Wissensquelle verwenden darfst.
       
       DEINE AUFGABE:
-      - Bearbeite jede der folgenden Fragen: ${JSON.stringify(questions)}
+      - Bearbeite jede der folgenden Aufgaben: ${JSON.stringify(questions)}
+      - Für jede Aufgabe im Array:
+        - Nutze den Wert von 'questionText' als die zu lösende Frage.
+        - Nutze den Wert von 'id' als den Titel ('title') für das Ergebnisobjekt.
+        - Gib den ursprünglichen 'questionText' im Feld 'questionText' des Ergebnisobjekts zurück.
       - Finde die relevante Information zur Beantwortung jeder Frage AUSSCHLIESSLICH in den "Skript"-Dokumenten.
       - Formuliere für jede Frage eine umfassende Antwort und eine schrittweise Erklärung des Lösungswegs.
       - Gib für jede Antwort eine präzise Referenz an, wo in den "Skripten" die Information gefunden wurde (z.B. "Siehe Folie 5, Abschnitt 'Thema X'" oder "Basierend auf der Formel im Kapitel Y").
@@ -216,12 +220,13 @@ export const solvePracticeQuestions = async (scriptFiles: File[], questions: str
                         items: {
                             type: Type.OBJECT,
                             properties: {
-                                title: { type: Type.STRING, description: "Die ursprüngliche Frage aus dem Übungsdokument." },
+                                title: { type: Type.STRING, description: "Der Identifikator der Aufgabe aus dem Dokument (z.B. 'Aufgabe 1a')." },
+                                questionText: { type: Type.STRING, description: "Der vollständige, ursprüngliche Text der Frage." },
                                 answer: { type: Type.STRING, description: "Die formulierte, korrekte Antwort. Mit Markdown formatiert." },
                                 explanation: { type: Type.STRING, description: "Eine detaillierte Erklärung des Lösungswegs. Mit Markdown formatiert." },
                                 reference: { type: Type.STRING, description: "Ein Zitat oder Verweis auf die exakte Stelle im Skript." }
                             },
-                            required: ["title", "answer", "explanation", "reference"]
+                            required: ["title", "questionText", "answer", "explanation", "reference"]
                         }
                     }
                 },
@@ -239,7 +244,7 @@ export const solvePracticeQuestions = async (scriptFiles: File[], questions: str
     }
 };
 
-export const extractQuestions = async (practiceFile: File, model: ModelName): Promise<string[]> => {
+export const extractQuestions = async (practiceFile: File, model: ModelName): Promise<ExamQuestion[]> => {
     if (!process.env.API_KEY) {
         throw new Error("API_KEY environment variable is not set");
     }
@@ -249,8 +254,8 @@ export const extractQuestions = async (practiceFile: File, model: ModelName): Pr
 
     const prompt = `
         Analysiere das hochgeladene Übungsdokument. Extrahiere alle einzelnen Fragen oder Aufgabenstellungen.
-        Gib die Fragen als JSON-Array von Strings zurück. Jedes Element im Array sollte genau eine Frage sein.
-        Beispiel: ["Was ist die Hauptstadt von Deutschland?", "Berechne 2+2.", "Erkläre die Photosynthese."].
+        Gib die Fragen als JSON-Array von Objekten zurück. Jedes Objekt sollte eine 'id' (der Bezeichner der Aufgabe, z.B. "Aufgabe 1a", "2.b)", "III."), die der originalen Nummerierung entspricht, und den 'questionText' (den vollständigen Text der Frage) enthalten.
+        Beispiel: [{"id": "1.a)", "questionText": "Was ist die Hauptstadt von Deutschland?"}, {"id": "1.b)", "questionText": "Berechne 2+2."}].
         Fasse die Fragen wenn nötig kurz zusammen, aber behalte den Kern der Aufgabe bei.
     `;
 
@@ -264,7 +269,14 @@ export const extractQuestions = async (practiceFile: File, model: ModelName): Pr
                 properties: {
                     questions: {
                         type: Type.ARRAY,
-                        items: { type: Type.STRING }
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                id: { type: Type.STRING, description: "Der Bezeichner der Aufgabe, z.B. 'Aufgabe 1a'." },
+                                questionText: { type: Type.STRING, description: "Der vollständige Text der Frage." }
+                            },
+                            required: ["id", "questionText"]
+                        }
                     }
                 },
                 required: ["questions"]
@@ -276,7 +288,7 @@ export const extractQuestions = async (practiceFile: File, model: ModelName): Pr
     try {
         const parsed = JSON.parse(jsonText);
         if (parsed.questions && Array.isArray(parsed.questions)) {
-            return parsed.questions;
+            return parsed.questions as ExamQuestion[];
         }
         throw new Error("Invalid format for questions array.");
     } catch (e) {

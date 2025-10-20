@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Chat } from '@google/genai';
 import { startTutorChat } from '../services/geminiService';
-import type { ChatMessage, ModelName } from '../types';
+import type { ChatMessage, ModelName, ExamQuestion } from '../types';
 import { ArrowUturnLeftIcon, SendIcon, DocumentArrowDownIcon, ChatBubbleLeftRightIcon } from './icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -13,7 +13,7 @@ declare const jspdf: any;
 interface GuidedSolutionProps {
   scriptFiles: File[];
   practiceFile: File;
-  questions: string[];
+  questions: ExamQuestion[];
   model: ModelName;
   onExit: () => void;
 }
@@ -75,7 +75,7 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFiles, pra
     setUserInput('');
 
     try {
-        const initialPrompt = `Lass uns an dieser Frage arbeiten: "${questions[index]}". Wie würdest du anfangen, diese Aufgabe zu lösen?`;
+        const initialPrompt = `Lass uns an dieser Frage arbeiten: "${questions[index].questionText}". Wie würdest du anfangen, diese Aufgabe zu lösen?`;
         const result = await chatRef.current.sendMessage({ message: initialPrompt });
         setMessages([{ role: 'model', text: result.text }]);
     } catch (err: any) {
@@ -142,8 +142,9 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFiles, pra
               y += textHeight + 4; 
           };
           
-          addTextWithBreaks(`Chat-Protokoll: Frage ${selectedQuestionIndex + 1}`, { fontSize: 18, style: 'bold' });
-          addTextWithBreaks(questions[selectedQuestionIndex], { fontSize: 12, style: 'italic' });
+          const currentQuestion = questions[selectedQuestionIndex];
+          addTextWithBreaks(`Chat-Protokoll: ${currentQuestion.id}`, { fontSize: 18, style: 'bold' });
+          addTextWithBreaks(currentQuestion.questionText, { fontSize: 12, style: 'italic' });
           y += 10;
 
           messages.forEach(msg => {
@@ -229,8 +230,10 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFiles, pra
                         <div className={`w-2 h-2 rounded-full ${statusClasses.indicator}`}></div>
                     </div>
                     <div className="flex-grow min-w-0">
-                        <span className="font-semibold block">Frage {index + 1}</span>
-                        <span className="text-slate-600 dark:text-slate-400 break-words">{q}</span>
+                      <p className="break-words">
+                          <strong className="font-semibold">{q.id}</strong>
+                          <span className="ml-2 text-slate-600 dark:text-slate-400">{q.questionText}</span>
+                      </p>
                     </div>
                   </button>
                 </li>
@@ -268,7 +271,7 @@ export const GuidedSolution: React.FC<GuidedSolutionProps> = ({ scriptFiles, pra
             <>
                 <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center flex-shrink-0">
                     <h3 className="font-semibold text-slate-800 dark:text-slate-200 pr-4">
-                        {questions[selectedQuestionIndex]}
+                        {questions[selectedQuestionIndex].id}: {questions[selectedQuestionIndex].questionText}
                     </h3>
                     <Button 
                         onClick={handleExportPdf} 

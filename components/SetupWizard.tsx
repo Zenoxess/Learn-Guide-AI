@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import type { DetailLevel, ModelName, SolutionMode, SimulationModeType, ScriptAction } from '../types';
 import { FileUpload } from './FileUpload';
 import { useTheme } from '../contexts/ThemeContext';
-import { XMarkIcon, LinkIcon, ListBulletIcon, BookOpenIcon, MagnifyingGlassIcon, CpuChipIcon, ChatBubbleLeftRightIcon, AcademicCapIcon, UsersIcon, SparklesIcon, KeyIcon, RectangleStackIcon, ChevronRightIcon, ChevronLeftIcon, LightBulbIcon, CheckIcon } from './icons';
+import { XMarkIcon, LinkIcon, ListBulletIcon, BookOpenIcon, MagnifyingGlassIcon, CpuChipIcon, ChatBubbleLeftRightIcon, AcademicCapIcon, UsersIcon, SparklesIcon, KeyIcon, RectangleStackIcon, ChevronRightIcon, ChevronLeftIcon, LightBulbIcon, CheckIcon, DocumentArrowUpIcon } from './icons';
 import { Button } from './Button';
 
 // Prop-Typen für den Wizard
@@ -17,6 +17,7 @@ interface SetupWizardProps {
   isUrlLoading: boolean;
   handleLoadFromUrl: () => void;
   error: string | null;
+  onImportSession: (file: File) => void;
 
   selectedScriptAction: ScriptAction;
   setSelectedScriptAction: (action: ScriptAction) => void;
@@ -44,6 +45,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = React.memo((props) => {
   const { theme } = useTheme();
   const [step, setStep] = useState(1);
   const [path, setPath] = useState<'learn' | 'practice' | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
 
   // Definitionen für Optionen, um sie nicht aus App.tsx durchreichen zu müssen
   const detailOptions = [ { id: 'overview', label: 'Übersicht', icon: ListBulletIcon }, { id: 'standard', label: 'Standard', icon: BookOpenIcon }, { id: 'detailed', label: 'Detailliert', icon: MagnifyingGlassIcon }, { id: 'eli5', label: 'ELI5', icon: LightBulbIcon } ];
@@ -58,6 +60,20 @@ export const SetupWizard: React.FC<SetupWizardProps> = React.memo((props) => {
   const simulationModeOptions = [ { id: 'coop', label: 'Studienpartner', icon: UsersIcon }, { id: 'vs', label: 'Herausforderer', icon: SparklesIcon } ];
   const modelOptions = [ { id: 'gemini-2.5-flash', label: 'Flash' }, { id: 'gemini-2.5-pro', label: 'Pro' } ];
   const modelDescriptions: Record<ModelName, string> = { 'gemini-2.5-flash': 'Schnell und effizient, für die meisten Aufgaben.', 'gemini-2.5-pro': 'Leistungsstark, für komplexe Dokumente.' };
+
+  const handleImportClick = () => {
+      importFileInputRef.current?.click();
+  };
+
+  const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (file) {
+          props.onImportSession(file);
+      }
+      // Reset input to allow re-importing the same file
+      event.target.value = '';
+  };
+
 
   const renderStepIndicator = () => {
     const steps = ['Dateien', 'Lernpfad', 'Details'];
@@ -157,6 +173,13 @@ export const SetupWizard: React.FC<SetupWizardProps> = React.memo((props) => {
                 <ul className="mt-2 space-y-2">{props.scriptFiles.map((file, index) => <li key={`${file.name}-${index}`} className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 p-2 rounded-md text-sm"><span className="text-slate-800 dark:text-slate-200 truncate pr-2">{file.name}</span><button onClick={() => props.handleRemoveScriptFile(index)} className="p-1 rounded-full text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200"><XMarkIcon className="h-4 w-4" /></button></li>)}</ul>
             </div>
         )}
+        <div className="flex items-center text-slate-500 dark:text-slate-400"><div className="flex-grow border-t border-slate-300 dark:border-slate-700"></div><span className="flex-shrink mx-4 text-sm font-semibold">ODER</span><div className="flex-grow border-t border-slate-300 dark:border-slate-700"></div></div>
+        <div>
+            <input type="file" ref={importFileInputRef} onChange={handleFileImport} accept=".json" className="sr-only" />
+            <Button onClick={handleImportClick} variant="secondary" className="w-full" leftIcon={<DocumentArrowUpIcon className="h-5 w-5" />}>
+                Gespeicherte Sitzung importieren (.json)
+            </Button>
+        </div>
         <div className="pt-6 text-right">
             <Button onClick={() => setStep(2)} disabled={props.scriptFiles.length === 0} rightIcon={<ChevronRightIcon className="h-5 w-5" />}>
                 Weiter
