@@ -28,7 +28,7 @@ Diese Anwendung ermöglicht es Studierenden, ihre Lernmaterialien (PDFs, Bilder,
     - **Zentrales Dashboard:** Alle generierten Inhalte werden in einem übersichtlichen Dashboard mit Tabs gesammelt.
     - **Einheitliches Komponentensystem:** Eine wiederverwendbare `Button`-Komponente sorgt für UI-Konsistenz.
     - **Dark Mode & Theming:** Anpassbares Erscheinungsbild mit verschiedenen Farbthemen.
-    - **PDF-Export:** Exportiert Lern-Guides und Lösungen als saubere PDF-Dateien.
+    - **PDF-Export:** Exportiert Lern-Guides und Lösungen als saubere PDF-Dateien. (work in progress)
     - **Sitzungsverwaltung:** Speichert den Fortschritt im Local Storage und ermöglicht das Fortsetzen einer früheren Sitzung.
     - **Import/Export von Sitzungen:** Ermöglicht das Speichern der gesamten Lernsitzung als JSON-Datei und das spätere Importieren, um nahtlos weiterzuarbeiten oder Sitzungen zu teilen.
     - **Responsives Design:** Optimiert für verschiedene Bildschirmgrößen.
