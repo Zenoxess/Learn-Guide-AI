@@ -30,6 +30,7 @@ Diese Anwendung ermöglicht es Studierenden, ihre Lernmaterialien (PDFs, Bilder,
     - **Dark Mode & Theming:** Anpassbares Erscheinungsbild mit verschiedenen Farbthemen.
     - **PDF-Export:** Exportiert Lern-Guides und Lösungen als saubere PDF-Dateien.
     - **Sitzungsverwaltung:** Speichert den Fortschritt im Local Storage und ermöglicht das Fortsetzen einer früheren Sitzung.
+    - **Import/Export von Sitzungen:** Ermöglicht das Speichern der gesamten Lernsitzung als JSON-Datei und das spätere Importieren, um nahtlos weiterzuarbeiten oder Sitzungen zu teilen.
     - **Responsives Design:** Optimiert für verschiedene Bildschirmgrößen.
 
 ## 🛠️ Verwendete Technologien
@@ -38,7 +39,7 @@ Diese Anwendung ermöglicht es Studierenden, ihre Lernmaterialien (PDFs, Bilder,
 - **Styling:** [Tailwind CSS](https://tailwindcss.com/) für ein Utility-First-CSS-Framework.
 - **KI-Modell:** [Google Gemini API](https://ai.google.dev/docs) (`@google/genai`) für alle Inhaltsgenerierungs- und Chat-Funktionen.
 - **PDF-Export:** [jsPDF](https://github.com/parallax/jsPDF) & [html2canvas](https://html2canvas.hertzen.com/) zur clientseitigen Erstellung von PDF-Dokumenten.
-- **Markdown-Rendering:** [react-markdown](https://github.com/remarkjs/react-markdown) mit `rehype-raw` und `react-syntax-highlighter` für die Darstellung formatierter Inhalte.
+- **Markdown-Rendering:** [react-markdown](https://github.com/remarkjs/react-markdown) mit `remark-gfm` (für Tabellen), `remark-math`/`rehype-katex` (für LaTeX-Formeln), `rehype-raw` und `react-syntax-highlighter` für die Darstellung formatierter Inhalte, inklusive Code-Blöcken.
 
 ## ⚙️ Lokales Setup & Ausführung
 
