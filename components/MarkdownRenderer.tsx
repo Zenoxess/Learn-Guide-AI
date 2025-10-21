@@ -4,6 +4,9 @@ import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { materialLight, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTheme } from '../contexts/ThemeContext';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import remarkGfm from 'remark-gfm';
 
 interface MarkdownRendererProps {
   content: string;
@@ -35,7 +38,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
             `}
         >
             <ReactMarkdown
-                rehypePlugins={[rehypeRaw]}
+                remarkPlugins={[remarkMath, remarkGfm]}
+                rehypePlugins={[rehypeRaw, rehypeKatex]}
                 components={{
                     // FIX: Destructure `ref` from props passed to SyntaxHighlighter to avoid type conflict.
                     // react-markdown passes a ref for HTMLElement, which is not compatible with SyntaxHighlighter's component ref.

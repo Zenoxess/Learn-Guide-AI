@@ -13,6 +13,14 @@ const filesToGenerativeParts = (files: File[]): Promise<Part[]> => {
     );
 };
 
+const richMarkdownFormattingInstruction = `
+    Nutze für deine Antworten und Erklärungen vollumfänglich Markdown. Dies beinhaltet explizit:
+
+    - **Tabellen:** Verwende Markdown-Tabellen (| Spalte 1 | Spalte 2 |), um Daten, Vergleiche oder Definitionen übersichtlich darzustellen.
+    - **Code-Blöcke:** Formatiere Code-Beispiele (z.B. Python, Java, SQL) immer als Code-Blöcke mit Sprachangabe (z.B. \`\`\`python ... \`\`\`).
+    - **Formeln:** Stelle mathematische Formeln und Symbole mit LaTeX-Syntax dar (z.B. Inline-Formeln wie $E=mc^2$ oder Block-Formeln wie $$\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}$$).
+`;
+
 /**
  * Simuliert das Abrufen von Webinhalten von einer URL.
  * WICHTIGER HINWEIS: Direkte clientseitige Anfragen an externe URLs stoßen in der Regel
@@ -63,7 +71,8 @@ export const generateStudyGuide = async (files: File[], useStrictContext: boolea
     4. Auf potenzielle Fallstricke oder häufige Fehler hinweisen, die bei dem Thema auftreten können.
     5. Generiere 2-3 relevante Folgefragen, die das Verständnis des Inhalts vertiefen und zum Nachdenken anregen. Diese Fragen sollten im Feld 'suggestedFollowUps' als Array von Strings zurückgegeben werden.
 
-    Strukturiere deine Antwort als JSON-Objekt, das dem bereitgestellten Schema entspricht. Der Inhalt sollte auf Deutsch sein. Verwende Markdown-Formatierungen (z.B. Aufzählungszeichen mit '-', Fettdruck mit '**text**', Überschriften mit '##'), um die Lesbarkeit zu verbessern.
+    Strukturiere deine Antwort als JSON-Objekt, das dem bereitgestellten Schema entspricht. Der Inhalt sollte auf Deutsch sein.
+    ${richMarkdownFormattingInstruction}
   `;
   
   let detailInstruction = '';
@@ -159,6 +168,7 @@ export const askFollowUpQuestion = async (context: string, question: string): Pr
   const prompt = `
     Du bist ein hilfsbereiter Universitäts-Tutor. Beantworte die Frage des Studenten kurz und prägnant.
     Die Frage bezieht sich auf den folgenden Kontext aus einem Lern-Guide. Beziehe dich in deiner Antwort auf diesen Kontext.
+    ${richMarkdownFormattingInstruction}
 
     ---
     Kontext:
@@ -198,7 +208,8 @@ export const solvePracticeQuestions = async (scriptFiles: File[], questions: Exa
       - Finde die relevante Information zur Beantwortung jeder Frage AUSSCHLIESSLICH in den "Skript"-Dokumenten.
       - Formuliere für jede Frage eine umfassende Antwort und eine schrittweise Erklärung des Lösungswegs.
       - Gib für jede Antwort eine präzise Referenz an, wo in den "Skripten" die Information gefunden wurde (z.B. "Siehe Folie 5, Abschnitt 'Thema X'" oder "Basierend auf der Formel im Kapitel Y").
-      - Deine gesamte Antwort muss auf Deutsch und im vorgegebenen JSON-Format sein. Verwende Markdown für die Formatierung der textuellen Inhalte.
+      - Deine gesamte Antwort muss auf Deutsch und im vorgegebenen JSON-Format sein.
+      ${richMarkdownFormattingInstruction}
     `;
 
     const contents: Content[] = [
@@ -306,6 +317,7 @@ export const askFollowUpOnSolution = async (context: SolvedQuestion, question: s
   const prompt = `
     Du bist ein hilfsbereiter Universitäts-Tutor. Beantworte die Nachfrage des Studenten kurz und prägnant.
     Die Frage bezieht sich auf die folgende gelöste Aufgabe. Beziehe dich in deiner Antwort auf diesen Kontext.
+    ${richMarkdownFormattingInstruction}
 
     ---
     **Ursprüngliche Frage:** ${context.title}
@@ -439,7 +451,8 @@ export const gradeExamAnswers = async (scriptFiles: File[], answers: ExamAnswer[
       3.  **Gib konstruktives Feedback:** Erkläre, warum die Antwort richtig oder falsch ist. Hebe Stärken hervor und zeige auf, wo Informationen fehlen oder falsch sind.
       4.  **Formuliere eine Musterlösung:** Schreibe eine ideale, umfassende Antwort, basierend auf den Informationen aus den Skripten.
       5.  Stelle sicher, dass deine gesamte Analyse AUSSCHLIESSLICH auf dem Inhalt der Skripte basiert.
-      6.  Gib das Ergebnis im geforderten JSON-Format zurück. Verwende Markdown für die textuellen Inhalte.
+      6.  Gib das Ergebnis im geforderten JSON-Format zurück.
+      ${richMarkdownFormattingInstruction}
     `;
     
     const contents: Content[] = [
