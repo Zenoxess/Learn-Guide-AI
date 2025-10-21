@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, Chat, Part, Content } from "@google/genai";
-import type { GuideResponse, PracticeResponse, DetailLevel, ModelName, ExamQuestion, ExamAnswer, ExamResult, GradedAnswer, JudgedRound, KeyConceptsResponse, FlashcardsResponse, SolvedQuestion } from '../types';
+import type { GuideResponse, PracticeResponse, DetailLevel, ModelName, ExamQuestion, ExamAnswer, ExamResult, GradedAnswer, JudgedRound, KeyConceptsResponse, FlashcardsResponse, SolvedQuestion, GuideStep } from '../types';
 import { fileToBase64 } from "../utils";
 
 const filesToGenerativeParts = (files: File[]): Promise<Part[]> => {
@@ -53,7 +53,7 @@ Dieser Inhalt wurde von der folgenden URL geladen: ${url}
 };
 
 
-export const generateStudyGuide = async (files: File[], useStrictContext: boolean, detailLevel: DetailLevel, model: ModelName): Promise<GuideResponse> => {
+export const generateStudyGuide = async (files: File[], useStrictContext: boolean, detailLevel: DetailLevel, model: ModelName, existingGuideSteps?: GuideStep[]): Promise<GuideResponse> => {
   if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable is not set");
   }
@@ -61,15 +61,26 @@ export const generateStudyGuide = async (files: File[], useStrictContext: boolea
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const fileParts = await filesToGenerativeParts(files);
 
+  const initialPromptInstruction = `Erstelle basierend auf den Dokumenten die ERSTEN 5 bis 7 logischen Schritte einer schrittweisen Anleitung, die einem Studenten hilft, den Inhalt zu verstehen und zu bearbeiten.`;
+  
+  const continuationPromptInstruction = `
+    Du setzt einen bereits begonnenen Lern-Guide fort. Die folgenden Themen wurden bereits behandelt: ${JSON.stringify(existingGuideSteps?.map(step => step.title) || [])}.
+    Deine Aufgabe ist es, die NÄCHSTEN 5 bis 7 logischen Schritte zu generieren. Wiederhole NICHT die bereits behandelten Themen. Konzentriere dich auf den nächsten Abschnitt oder das nächste Konzept im Material.
+  `;
+
   const basePrompt = `
     Du bist ein erfahrener Universitäts-Tutor und Lernassistent. Deine Aufgabe ist es, die hochgeladenen Dokumente (z.B. eine Vorlesungsfolie, ein Übungsblatt oder ein Skriptausschnitt) zu analysieren.
+    
+    ${existingGuideSteps && existingGuideSteps.length > 0 ? continuationPromptInstruction : initialPromptInstruction}
 
-    Erstelle basierend auf den Dokumenten eine schrittweise Anleitung, die einem Studenten hilft, den Inhalt zu verstehen und zu bearbeiten. Für jeden Schritt sollst du:
+    Für jeden Schritt sollst du:
     1. Eine klare und verständliche Erklärung liefern.
     2. Hilfreiche Tipps und Tricks geben.
     3. Mögliche Lösungswege oder Denkansätze aufzeigen, insbesondere bei Übungsaufgaben.
     4. Auf potenzielle Fallstricke oder häufige Fehler hinweisen, die bei dem Thema auftreten können.
     5. Generiere 2-3 relevante Folgefragen, die das Verständnis des Inhalts vertiefen und zum Nachdenken anregen. Diese Fragen sollten im Feld 'suggestedFollowUps' als Array von Strings zurückgegeben werden.
+
+    WICHTIG: Analysiere nach der Generierung der Schritte den verbleibenden Inhalt der Dokumente. Wenn du glaubst, dass es noch wesentliche, eigenständige Themen gibt, die in zukünftigen Schritten behandelt werden sollten, setze den 'hasMore'-Flag in deiner JSON-Antwort auf 'true'. Andernfalls setze ihn auf 'false'.
 
     Strukturiere deine Antwort als JSON-Objekt, das dem bereitgestellten Schema entspricht. Der Inhalt sollte auf Deutsch sein.
     ${richMarkdownFormattingInstruction}
@@ -142,9 +153,13 @@ export const generateStudyGuide = async (files: File[], useStrictContext: boolea
               },
               required: ["title", "content"]
             }
+          },
+          hasMore: {
+            type: Type.BOOLEAN,
+            description: "Auf 'true' setzen, wenn es noch weitere wichtige Themen im Dokument zu behandeln gibt, sonst 'false'."
           }
         },
-        required: ["guide"]
+        required: ["guide", "hasMore"]
       }
     }
   });

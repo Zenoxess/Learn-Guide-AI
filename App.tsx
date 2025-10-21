@@ -79,6 +79,11 @@ export default function App() {
   const [savedSessionData, setSavedSessionData] = useState<SavedSession | null>(null);
   const [showSessionPrompt, setShowSessionPrompt] = useState(false);
   const [notification, setNotification] = useState<AppNotification | null>(null);
+  
+  // States for guide batching
+  const [hasMoreTopics, setHasMoreTopics] = useState(false);
+  const [isGeneratingNextBatch, setIsGeneratingNextBatch] = useState(false);
+
 
   // Load session from localStorage on initial app load
   useEffect(() => {
@@ -154,6 +159,7 @@ export default function App() {
     setOpenStepIndex(null);
     setAppState('initial');
     setProgress(0);
+    setHasMoreTopics(false);
   }, []);
 
   const handleReset = useCallback(() => {
@@ -393,6 +399,7 @@ export default function App() {
       if (result.guide && result.guide.length > 0) {
         setGeneratedContent(prev => ({...prev, guide: result.guide, solvedQuestions: null }));
         setOpenStepIndex(0);
+        setHasMoreTopics(result.hasMore ?? false);
       } else {
         throw new Error("Die KI konnte keinen Guide für dieses Dokument erstellen.");
       }
@@ -401,6 +408,28 @@ export default function App() {
     }
   }, [scriptFiles, useStrictContext, detailLevel, model]);
   
+  const handleGenerateNextGuideBatch = useCallback(async () => {
+    if (isGeneratingNextBatch || scriptFiles.length === 0) return;
+    setIsGeneratingNextBatch(true);
+    setError(null);
+    try {
+        const result = await generateStudyGuide(scriptFiles, useStrictContext, detailLevel, model, generatedContent.guide || []);
+        if (result.guide && result.guide.length > 0) {
+            setGeneratedContent(prev => ({
+                ...prev,
+                guide: [...(prev.guide || []), ...result.guide]
+            }));
+            setHasMoreTopics(result.hasMore ?? false);
+        } else {
+            setHasMoreTopics(false);
+        }
+    } catch (err: any) {
+        setNotification({ message: err.message || "Fehler beim Generieren der nächsten Themen.", type: 'warning' });
+    } finally {
+        setIsGeneratingNextBatch(false);
+    }
+  }, [isGeneratingNextBatch, scriptFiles, useStrictContext, detailLevel, model, generatedContent.guide]);
+
   const handleGenerateKeyConcepts = useCallback(async () => {
     if (scriptFiles.length === 0) return;
     setError(null);
@@ -678,6 +707,10 @@ export default function App() {
             isSolvingNextBatch={isSolvingNextBatch}
             totalPracticeQuestionsCount={allPracticeQuestions.length}
             solvedPracticeQuestionsCount={generatedContent.solvedQuestions?.length || 0}
+            // Props for guide batching
+            handleGenerateNextGuideBatch={handleGenerateNextGuideBatch}
+            isGeneratingNextBatch={isGeneratingNextBatch}
+            hasMoreTopics={hasMoreTopics}
         />
       );
       case 'guided': return <GuidedSolution scriptFiles={scriptFiles} practiceFile={practiceFile!} questions={practiceQuestions} model={model} onExit={handleReturnToConfig} />;

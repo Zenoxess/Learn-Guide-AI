@@ -12,6 +12,7 @@ export interface GuideStep {
 
 export interface GuideResponse {
     guide: GuideStep[];
+    hasMore?: boolean;
 }
 
 export type DetailLevel = 'overview' | 'standard' | 'detailed' | 'eli5';

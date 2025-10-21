@@ -106,6 +106,10 @@ interface ResultsDashboardProps {
   isSolvingNextBatch: boolean;
   totalPracticeQuestionsCount: number;
   solvedPracticeQuestionsCount: number;
+  // Props for guide batching
+  handleGenerateNextGuideBatch: () => void;
+  isGeneratingNextBatch: boolean;
+  hasMoreTopics: boolean;
 }
 
 type TabKey = keyof GeneratedContent | 'add';
@@ -180,6 +184,9 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = React.memo((pro
                     onSolveNextBatch={props.handleSolveNextBatch}
                     isSolvingNextBatch={props.isSolvingNextBatch}
                     hasMoreQuestions={props.solvedPracticeQuestionsCount < props.totalPracticeQuestionsCount}
+                    onGenerateNextBatch={props.handleGenerateNextGuideBatch}
+                    isGeneratingNextBatch={props.isGeneratingNextBatch}
+                    hasMoreTopics={props.hasMoreTopics}
                 />;
       case 'keyConcepts':
         return <KeyConceptsDisplay concepts={props.generatedContent.keyConcepts!} onReturn={props.onReset} />;
